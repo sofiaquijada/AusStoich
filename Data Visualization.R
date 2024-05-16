@@ -34,7 +34,7 @@ ggplot(data=species_count_tib, aes(x = reorder(species_binom,-Freq), y = Freq)) 
   coord_flip()
 
 
-#outlier:Corymbia calophylla which is Myrtaceae Corymbia
+#outlier:Corymbia calophylla which is Myrtaceae Corymbia with 477 samples
 ggplot(data = subset(species_count_tib, Freq <= 200), aes(x = reorder(species_binom, -Freq), y = Freq)) +
   geom_bar(stat="identity", width=0.5, fill="darkgreen") +
   ggtitle("Number of Samples per Species, n < 200") +
@@ -43,20 +43,30 @@ ggplot(data = subset(species_count_tib, Freq <= 200), aes(x = reorder(species_bi
 n = 200
 ggplot(data = subset(species_count_tib, Freq <= n), aes(x = reorder(species_binom, -Freq), y = Freq)) +
   geom_bar(stat="identity", width=0.5, fill="darkgreen") +
-  ggtitle("Number of Samples per Species, n <= 200") +
+  ggtitle("Number of Samples per Species, n <=", n) +
   coord_flip() +
   theme(
     axis.text.y = element_text(size = 2), # Adjust x-axis text size
     axis.title.y = element_text(size = 5)) # Adjust x-axis title size)
 
+#next steps: where are the most samples, visualize frequencies over 10-50
+#geographical distributions, are these all taken from the same place?
 
-
+m = 10
+ggplot(data = subset(species_count_tib, Freq > m), aes(x = reorder(species_binom, -Freq), y = Freq)) +
+  geom_bar(stat="identity", width=0.5, fill="darkgreen") +
+  ggtitle(paste("Number of Samples per Species, Freq >", m)) +
+  coord_flip() 
+#extract list of most species with the most samples, somehow see if they are close geographically
 
 
 #summary data
 #10464 samples
 #1421 species
 #5.175352 average without main outlier
+
+
+
 
 
 
