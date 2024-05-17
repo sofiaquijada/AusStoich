@@ -8,9 +8,9 @@ library(tidyverse)
 
 
 
-austraits_leaf_stoichiometry_MASTER<-read.csv("austraits_leaf_stoichiometry_MASTER.csv")
+raw_data<-read.csv("austraits_leaf_stoichiometry_MASTER.csv")
 
-austraits_leaf_stoich_tib<-as_tibble(austraits_leaf_stoichiometry_MASTER)
+austraits_leaf_stoich_tib<-as_tibble(raw_data)
 
 ################## Number of Samples per Species ###################
 
@@ -60,20 +60,70 @@ ggplot(data = subset(species_count_tib, Freq > m), aes(x = reorder(species_binom
 #extract list of most species with the most samples, somehow see if they are close geographically
 
 
+
 #summary data
 #10464 samples
 #1421 species
-#5.175352 average without main outlier
+#5.175352 average number of samples without main outlier
 
 
+################## Leaf Nutrient Concentrations ###################
+
+#take at look at warning, are there missing values - yes where there is NA
+#nitrogen has no NA
+#visualize these individually so there are no missing values
+
+ggplot(data = austraits_leaf_stoich_tib) + 
+  geom_point(mapping = aes(x = leaf_N_per_dry_mass, y = leaf_P_per_dry_mass))+ 
+  ggtitle("Leaf N vs Leaf P")
+
+ggplot(data = austraits_leaf_stoich_tib) + 
+  geom_point(mapping = aes(x = leaf_P_per_dry_mass, y = leaf_C_per_dry_mass))+ 
+  ggtitle("Leaf P vs Leaf C")
+
+ggplot(data = austraits_leaf_stoich_tib) + 
+  geom_point(mapping = aes(x = leaf_N_per_dry_mass, y = leaf_C_per_dry_mass))+ 
+  ggtitle("Leaf N vs Leaf C")
+
+#idea: faceting by family things like leaf N, to create summaries
 
 
+################## Geographical Distribution ###################
+#particularly of most species with highest sample frequency - freq > 50
 
+# Freq > 50 list:
+# Acacia rostellifera
+# Erythrophleum chlorostachys 
+# Corymbia terminalis
+# Acacia aneura
+# Eucalyptus macrorhyncha
+# Eucalyptus miniata
+# Eucalyptus tetrodonta
+# Eucalyptus tereticornis
+# Corymbia calophylla 
 
-#idea: faceting by family things like leaf N or 
+species_over_50 <- filter(species_count_tib, Freq > 50) 
+#map these 
 
+#create tibble of just species geo data
+species_geo_data <- tibble(
+  species_binom = austraits_leaf_stoich_tib$species_binom,
+  lat = austraits_leaf_stoich_tib$lat_deg,
+  long = austraits_leaf_stoich_tib$long_deg
+)
 
+australia_map <- map_data("world", region = "Australia")
 
-
+# Plot all species on the map
+ggplot() +
+  geom_polygon(data = australia_map, aes(x = long, y = lat, group = group), fill = "lightgray", color = "black") +
+  geom_point(data = species_geo_data, aes(x = long, y = lat), color = "darkgreen", size = 1) +
+  labs(title = "All Species Locations", x = "Longitude", y = "Latitude") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 10, face = "bold"),
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 8)
+  )
 
 
