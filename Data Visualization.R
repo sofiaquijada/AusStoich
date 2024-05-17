@@ -52,13 +52,11 @@ ggplot(data = subset(species_count_tib, Freq <= n), aes(x = reorder(species_bino
 #next steps: where are the most samples, visualize frequencies over 10-50
 #geographical distributions, are these all taken from the same place?
 
-m = 10
+m = 50
 ggplot(data = subset(species_count_tib, Freq > m), aes(x = reorder(species_binom, -Freq), y = Freq)) +
   geom_bar(stat="identity", width=0.5, fill="darkgreen") +
   ggtitle(paste("Number of Samples per Species, Freq >", m)) +
   coord_flip() 
-#extract list of most species with the most samples, somehow see if they are close geographically
-
 
 
 #summary data
@@ -146,5 +144,11 @@ ggplot() +
     axis.text = element_text(size = 8)
   )
 
-
+m = 50
+ggplot(data = subset(species_count_tib, Freq > m), aes(x = reorder(species_binom, -Freq), y = Freq, fill = species_binom)) +
+  geom_bar(stat="identity", width=0.5) +
+  scale_fill_discrete() +
+  ggtitle(paste("Number of Samples per Species, Freq >", m)) +
+  coord_flip() 
+#color coded bar graph
 
