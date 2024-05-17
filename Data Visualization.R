@@ -119,20 +119,6 @@ ggplot() +
     axis.text = element_text(size = 8)
   )
 
-#do the same with only species over 50 
-#a different colour for every species. 
-
-# Freq > 50 list:
-# Acacia rostellifera
-# Erythrophleum chlorostachys 
-# Corymbia terminalis
-# Acacia aneura
-# Eucalyptus macrorhyncha
-# Eucalyptus miniata
-# Eucalyptus tetrodonta
-# Eucalyptus tereticornis
-# Corymbia calophylla 
-
 #make tibble of just species with more than 50 samples with geo data
 species_over_50 <- filter(species_geo_data_freq, frequency > 50)
 #plot only these
