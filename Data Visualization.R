@@ -135,4 +135,30 @@ ggplot() +
 
 #make tibble of just species with more than 50 samples with geo data
 species_over_50 <- filter(species_geo_data_freq, frequency > 50)
+#plot only these
+ggplot() +
+  geom_polygon(data = australia_map, aes(x = long, y = lat, group = group), fill = "lightgray", color = "black") +
+  geom_point(data = species_over_50, aes(x = long, y = lat), color = "darkgreen", size = 1) +
+  labs(title = "Species Frequency > 50", x = "Longitude", y = "Latitude") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 10, face = "bold"),
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 8)
+  )
+
+#now change colors (should be 9 different colors)
+ggplot() +
+  geom_polygon(data = australia_map, aes(x = long, y = lat, group = group), fill = "lightgray", color = "black")+
+  geom_point(data = species_over_50, aes(x = long, y = lat, color = species_binom), shape = 3, size = 2) +
+  scale_color_discrete() +
+  labs(title = "Species Frequency > 50", x = "Longitude", y = "Latitude") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 10, face = "bold"),
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 8)
+  )
+
+
 
