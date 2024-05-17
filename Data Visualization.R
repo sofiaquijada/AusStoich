@@ -91,26 +91,19 @@ ggplot(data = austraits_leaf_stoich_tib) +
 ################## Geographical Distribution ###################
 #particularly of most species with highest sample frequency - freq > 50
 
-# Freq > 50 list:
-# Acacia rostellifera
-# Erythrophleum chlorostachys 
-# Corymbia terminalis
-# Acacia aneura
-# Eucalyptus macrorhyncha
-# Eucalyptus miniata
-# Eucalyptus tetrodonta
-# Eucalyptus tereticornis
-# Corymbia calophylla 
-
-species_over_50 <- filter(species_count_tib, Freq > 50) 
-#map these 
-
 #create tibble of just species geo data
 species_geo_data <- tibble(
   species_binom = austraits_leaf_stoich_tib$species_binom,
   lat = austraits_leaf_stoich_tib$lat_deg,
-  long = austraits_leaf_stoich_tib$long_deg
+  long = austraits_leaf_stoich_tib$long_deg,
 )
+
+#better way: include frequency in this tibble, avoids all problems down the line
+species_geo_data_freq <- species_geo_data %>%
+  group_by(species_binom) %>%
+  mutate(frequency = n()) %>%
+  ungroup() %>%
+  select(species_binom, lat, long, frequency)
 
 australia_map <- map_data("world", region = "Australia")
 
@@ -126,4 +119,20 @@ ggplot() +
     axis.text = element_text(size = 8)
   )
 
+#do the same with only species over 50 
+#a different colour for every species. 
+
+# Freq > 50 list:
+# Acacia rostellifera
+# Erythrophleum chlorostachys 
+# Corymbia terminalis
+# Acacia aneura
+# Eucalyptus macrorhyncha
+# Eucalyptus miniata
+# Eucalyptus tetrodonta
+# Eucalyptus tereticornis
+# Corymbia calophylla 
+
+#make tibble of just species with more than 50 samples with geo data
+species_over_50 <- filter(species_geo_data_freq, frequency > 50)
 
