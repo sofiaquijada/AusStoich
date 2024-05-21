@@ -1,5 +1,8 @@
 install.packages("tidyverse")
+install.packages("cowplot")
 library(tidyverse)
+library(cowplot)
+library(patchwork)
 
 #tidy data rules:
 # 1. Put each dataset in a tibble.
@@ -107,7 +110,8 @@ australia_map <- map_data("world", region = "Australia")
 
 # Plot all species on the map
 ggplot() +
-  geom_polygon(data = australia_map, aes(x = long, y = lat, group = group), fill = "lightgray", color = "black") +
+  geom_polygon(data = australia_map, aes(x = long, y = lat, group = group),
+  fill = "lightgray", color = "black") +
   geom_point(data = species_geo_data, aes(x = long, y = lat), color = "darkgreen", size = 1) +
   labs(title = "All Species Locations", x = "Longitude", y = "Latitude") +
   theme_minimal() +
@@ -121,7 +125,8 @@ ggplot() +
 species_over_50 <- filter(species_geo_data_freq, frequency > 50)
 #plot only these
 ggplot() +
-  geom_polygon(data = australia_map, aes(x = long, y = lat, group = group), fill = "lightgray", color = "black") +
+  geom_polygon(data = australia_map, aes(x = long, y = lat, group = group),
+  fill = "lightgray", color = "black") +
   geom_point(data = species_over_50, aes(x = long, y = lat), color = "darkgreen", size = 1) +
   labs(title = "Species Frequency > 50", x = "Longitude", y = "Latitude") +
   theme_minimal() +
@@ -132,9 +137,11 @@ ggplot() +
   )
 
 #now change colors (should be 9 different colors)
-ggplot() +
-  geom_polygon(data = australia_map, aes(x = long, y = lat, group = group), fill = "lightgray", color = "black")+
-  geom_point(data = species_over_50, aes(x = long, y = lat, color = species_binom), shape = 3, size = 2) +
+australia_over_50_map <- ggplot() +
+  geom_polygon(data = australia_map, aes(x = long, y = lat, group = group),
+  fill = "lightgray", color = "black")+
+  geom_point(data = species_over_50, aes(x = long, y = lat, color = species_binom),
+  shape = 3, size = 2) +
   scale_color_discrete() +
   labs(title = "Species Frequency > 50", x = "Longitude", y = "Latitude") +
   theme_minimal() +
@@ -142,13 +149,18 @@ ggplot() +
     plot.title = element_text(size = 10, face = "bold"),
     axis.title = element_text(size = 10),
     axis.text = element_text(size = 8)
-  )
+  ) 
 
 m = 50
-ggplot(data = subset(species_count_tib, Freq > m), aes(x = reorder(species_binom, -Freq), y = Freq, fill = species_binom)) +
+australia_over_50_bar <- ggplot(
+  data = subset(species_count_tib, Freq > m),
+  aes(x = reorder(species_binom, -Freq), y = Freq, fill = species_binom)) +
   geom_bar(stat="identity", width=0.5) +
   scale_fill_discrete() +
   ggtitle(paste("Number of Samples per Species, Freq >", m)) +
-  coord_flip() 
+  coord_flip()
 #color coded bar graph
 
+combined_plot <- plot_grid(australia_over_50_bar, australia_over_50_map, labels = "AUTO")
+
+#over 30 and exclude 8 most common 
