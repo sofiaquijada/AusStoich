@@ -74,14 +74,14 @@ ggplot(data = subset((species_count_tib), Freq > m), aes(x = reorder(species_bin
 ################## Amount Types ##################
 
 #woodiness
-ggplot(data = leaf_data, aes(x = woodiness)) +
+woodiness_count_bar <- ggplot(data = leaf_data, aes(x = woodiness)) +
   geom_bar(width = 0.5, fill = "darkgreen") +
   ggtitle("Count of Woody vs Herbaceous Species") +
   ylab("Count") +
   theme_minimal()
 
 #fixers
-ggplot(data = leaf_data, aes(x = factor(putative_BNF))) +
+fixers_count_bar <- ggplot(data = leaf_data, aes(x = factor(putative_BNF))) +
   geom_bar(width = 0.2, fill = "darkgreen") +
   ggtitle("Count of Nitrogen Fixers") +
   ylab("Count") +
@@ -89,13 +89,26 @@ ggplot(data = leaf_data, aes(x = factor(putative_BNF))) +
   labels = c("0" = "Non-Fixers", "1" = "Fixers")) +
   theme_minimal()
 
-ggplot(data = leaf_data, aes(x = reclass_life_history)) +
+#life history
+life_history_count_bar <- ggplot(data = leaf_data, aes(x = reclass_life_history)) +
   geom_bar(width = 0.5, fill = "darkgreen") +
-  ggtitle("Count of Woody vs Herbaceous Species") +
+  ggtitle("Life History") +
   ylab("Count") +
   theme_minimal()
 
-#life history
+#myc type
+myc_type_count_bar <- ggplot(data = leaf_data, aes(x = myc_type)) +
+  geom_bar(width = 0.5, fill = "darkgreen") +
+  ggtitle("Myc Type") +
+  ylab("Count") +
+  theme_minimal()
+
+categorical_counts <- plot_grid(
+  woodiness_count_bar,
+  fixers_count_bar,
+  life_history_count_bar,
+  myc_type_count_bar)
+
 
 ################## Leaf Nutrient Concentrations ###################
 
@@ -150,11 +163,13 @@ N_vs_P_over_30_under_50 <- ggplot(data = leaf_data %>%
   geom_point(mapping = aes(x = leaf_N_per_dry_mass, y = leaf_P_per_dry_mass)) + 
   ggtitle(paste("Leaf N vs Leaf P,",n,"< Freq <", m))
 
-N_vs_C_over_30_under_50 <- ggplot(data = leaf_data %>% filter(frequency > n)) + 
+N_vs_C_over_30_under_50 <- ggplot(data = leaf_data %>%
+  filter(frequency > n & frequency < m)) + 
   geom_point(mapping = aes(x = leaf_N_per_dry_mass, y = leaf_C_per_dry_mass)) + 
   ggtitle(paste("Leaf N vs Leaf C,",n,"< Freq <", m))
 
-P_vs_C_over_30_under_50 <- ggplot(data = leaf_data %>% filter(frequency > n)) + 
+P_vs_C_over_30_under_50 <- ggplot(data = leaf_data %>% 
+  filter(frequency > n & frequency < m)) + 
   geom_point(mapping = aes(x = leaf_P_per_dry_mass, y = leaf_C_per_dry_mass)) + 
   ggtitle(paste("Leaf P vs Leaf C,",n,"< Freq <", m))
 
@@ -165,10 +180,188 @@ nutrient_plots_over_30_under_50 <- plot_grid(
 
 #next: partition these into the 8 biggest families
 
+#filtered by categorical variables
+#create data frame with all categorical variables + concentration values
+leaf_concentration_data <- data.frame(
+  unique_ID = leaf_data$Unique_ID,
+  woodiness = leaf_data$woodiness,
+  reclass_life_history = leaf_data$reclass_life_history,
+  putative_BNF = leaf_data$putative_BNF,
+  myc_type = leaf_data$myc_type,
+  concentration = c(leaf_data$leaf_N_per_dry_mass, leaf_data$leaf_P_per_dry_mass,
+                    leaf_data$leaf_C_per_dry_mass),
+  nutrient = factor(rep(c("N", "P", "C"), each = nrow(leaf_data)))
+  )
+
+#all three nutrients by categorical variables
+nutrients_by_woodiness <- ggplot(leaf_concentration_data, aes(x = factor(woodiness), y = concentration, fill = nutrient)) + 
+  geom_boxplot(position = position_dodge(width = 1)) +
+  scale_fill_manual(values = c("N" = "pink", "P" = "lightyellow", "C" = "lightgreen")) +
+  labs(x = "Woodiness", y = "Concentration", fill = "Nutrient") +
+  ggtitle("Nutrient Concentrations by Woodiness") +
+  theme_minimal()
+
+nutrients_by_life_history <- ggplot(leaf_concentration_data, aes(x = factor(reclass_life_history), y = concentration, fill = nutrient)) + 
+  geom_boxplot(position = position_dodge(width = 1)) +
+  scale_fill_manual(values = c("N" = "pink", "P" = "lightyellow", "C" = "lightgreen")) +
+  labs(x = "Life History", y = "Concentration", fill = "Nutrient") +
+  ggtitle("Nutrient Concentrations by Life History") +
+  theme_minimal()
+
+nutrients_by_fixer_type <- ggplot(leaf_concentration_data, aes(x = factor(putative_BNF), y = concentration, fill = nutrient)) + 
+  geom_boxplot(position = position_dodge(width = 1)) +
+  scale_fill_manual(values = c("N" = "pink", "P" = "lightyellow", "C" = "lightgreen")) +
+  labs(x = "Nitrogen Fixers", y = "Concentration", fill = "Nutrient") +
+  scale_x_discrete(labels = c("0" = "Non-Fixer", "1" = "Fixer")) +
+  ggtitle("Nutrient Concentrations by Fixer Type") +
+  theme_minimal()
+
+nutrients_by_myc_type <- ggplot(leaf_concentration_data, aes(x = factor(myc_type), y = concentration, fill = nutrient)) + 
+  geom_boxplot(position = position_dodge(width = 1)) +
+  scale_fill_manual(values = c("N" = "pink", "P" = "lightyellow", "C" = "lightgreen")) +
+  labs(x = "Myc Type", y = "Concentration", fill = "Nutrient") +
+  ggtitle("Nutrient Concentrations by Myc Type") +
+  theme_minimal()
+
+plot_grid(
+  nutrients_by_woodiness,
+  nutrients_by_life_history,
+  nutrients_by_fixer_type,
+  nutrients_by_myc_type)
+
+#N and P data only
+leaf_N_and_P_data <- subset(leaf_concentration_data, nutrient %in% c("N", "P"))
+
+N_P_woodiness <- ggplot(leaf_N_and_P_data, aes(x = factor(woodiness), y = concentration, fill = nutrient)) + 
+  geom_boxplot(position = position_dodge(width = 0.8)) +
+  scale_fill_manual(values = c("N" = "pink", "P" = "lightyellow")) +
+  labs(x = "Woodiness", y = "Concentration", fill = "Nutrient") +
+  ggtitle("N and P Concentrations by Woodiness") +
+  theme_minimal()
+
+N_P_life_history <- ggplot(leaf_N_and_P_data, aes(x = factor(reclass_life_history), y = concentration, fill = nutrient)) + 
+  geom_boxplot(position = position_dodge(width = 0.8)) +
+  scale_fill_manual(values = c("N" = "pink", "P" = "lightyellow")) +
+  labs(x = "Life History", y = "Concentration", fill = "Nutrient") +
+  ggtitle("N and P Concentrations by Life History") +
+  theme_minimal()
+
+N_P_fixer_type <- ggplot(leaf_N_and_P_data, aes(x = factor(putative_BNF), y = concentration, fill = nutrient)) + 
+  geom_boxplot(position = position_dodge(width = 0.8)) +
+  scale_fill_manual(values = c("N" = "pink", "P" = "lightyellow")) +
+  labs(x = "Nitrogen Fixers", y = "Concentration", fill = "Nutrient") +
+  scale_x_discrete(labels = c("0" = "Non-Fixer", "1" = "Fixer")) +
+  ggtitle("N and P Concentrations by Fixer Type") +
+  theme_minimal()
+
+N_P_myc_type <- ggplot(leaf_N_and_P_data, aes(x = factor(myc_type), y = concentration, fill = nutrient)) + 
+  geom_boxplot(position = position_dodge(width = 0.8)) +
+  scale_fill_manual(values = c("N" = "pink", "P" = "lightyellow")) +
+  labs(x = "Myc type", y = "Concentration", fill = "Nutrient") +
+  ggtitle("N and P Concentrations by Myc Type") +
+  theme_minimal()
+
+plot_grid(
+  N_P_woodiness,
+  N_P_life_history,
+  N_P_fixer_type,
+  N_P_myc_type
+  )
+
+leaf_C_data <- subset(leaf_concentration_data, nutrient %in% c("C"))
+leaf_N_data <- subset(leaf_concentration_data, nutrient %in% c("N"))
+leaf_P_data <- subset(leaf_concentration_data, nutrient %in% c("P"))
+
+ggplot(leaf_C_data, aes(x = factor(woodiness), y = concentration, fill = nutrient)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("C" = "lightgreen")) +
+  labs(x = "Woodiness", y = "Concentration", fill = "Nutrient") +
+  ggtitle("C concentrations by Woodiness") +
+  geom_jitter(color = )
+  theme_minimal()
+
+ggplot(leaf_concentration_data, aes(x = factor(woodiness), y = concentration, fill = nutrient)) + 
+  geom_boxplot() +
+  scale_fill_manual(values = c("N" = "pink", "P" = "lightyellow", "C" = "lightgreen")) +
+  facet_wrap(~nutrient)
+#this isnt great 
+   
+ggplot(leaf_concentration_data, aes(x=factor(woodiness), y=concentration, fill=nutrient)) + 
+  geom_boxplot() +
+  scale_fill_manual(values = c("N" = "pink", "P" = "lightyellow", "C" = "lightgreen")) +
+  facet_wrap(~woodiness, scale="free")
+# better way to do what i did above. whatever
+
+plot_1 <- ggplot(leaf_C_data, aes(x=factor(woodiness), y=concentration, fill=nutrient)) + 
+  geom_boxplot() +
+  scale_fill_manual(values = c("C" = "lightgreen")) +
+  facet_wrap(~woodiness, scale="free")
+
+plot_2 <- ggplot(leaf_N_data, aes(x=factor(woodiness), y=concentration, fill=nutrient)) + 
+  geom_boxplot() +
+  scale_fill_manual(values = c("N" = "pink")) +
+  facet_wrap(~woodiness, scale="free")
+
+plot_3 <- ggplot(leaf_P_data, aes(x=factor(woodiness), y=concentration, fill=nutrient)) + 
+  geom_boxplot() +
+  scale_fill_manual(values = c("P" = "lightyellow")) +
+  facet_wrap(~woodiness, scale="free")
+
+plot_4 <- ggplot(leaf_C_data, aes(x=factor(reclass_life_history), y=concentration, fill=nutrient)) + 
+  geom_boxplot() +
+  scale_fill_manual(values = c("C" = "lightgreen")) +
+  facet_wrap(~reclass_life_history, scale="free")
+
+plot_5 <- ggplot(leaf_N_data, aes(x=factor(reclass_life_history), y=concentration, fill=nutrient)) + 
+  geom_boxplot() +
+  scale_fill_manual(values = c("N" = "pink")) +
+  facet_wrap(~reclass_life_history, scale="free")
+
+plot_6 <- ggplot(leaf_P_data, aes(x=factor(reclass_life_history), y=concentration, fill=nutrient)) + 
+  geom_boxplot() +
+  scale_fill_manual(values = c("P" = "lightyellow")) +
+  facet_wrap(~reclass_life_history, scale="free")
+
+plot_7 <- ggplot(leaf_C_data, aes(x=factor(myc_type), y=concentration, fill=nutrient)) + 
+  geom_boxplot() +
+  scale_fill_manual(values = c("C" = "lightgreen")) +
+  facet_wrap(~myc_type, scale="free")
+
+plot_8 <- ggplot(leaf_N_data, aes(x=factor(myc_type), y=concentration, fill=nutrient)) + 
+  geom_boxplot() +
+  scale_fill_manual(values = c("N" = "pink")) +
+  facet_wrap(~myc_type, scale="free")
+
+plot_9 <- ggplot(leaf_P_data, aes(x=factor(myc_type), y=concentration, fill=nutrient)) + 
+  geom_boxplot() +
+  scale_fill_manual(values = c("P" = "lightyellow")) +
+  facet_wrap(~myc_type, scale="free")
+
+plot_10 <- ggplot(leaf_C_data, aes(x=factor(putative_BNF), y=concentration, fill=nutrient)) + 
+  geom_boxplot() +
+  scale_fill_manual(values = c("C" = "lightgreen")) +
+  scale_x_discrete(labels = c("0" = "Non-Fixer", "1" = "Fixer")) +
+  facet_wrap(~putative_BNF, scale="free")
+
+plot_11 <- ggplot(leaf_N_data, aes(x=factor(putative_BNF), y=concentration, fill=nutrient)) + 
+  geom_boxplot() +
+  scale_fill_manual(values = c("N" = "pink")) +
+  scale_x_discrete(labels = c("0" = "Non-Fixer", "1" = "Fixer")) +
+  facet_wrap(~putative_BNF, scale="free")
+
+plot_12 <- ggplot(leaf_P_data, aes(x=factor(putative_BNF), y=concentration, fill=nutrient)) + 
+  geom_boxplot() +
+  scale_fill_manual(values = c("P" = "lightyellow")) +
+  scale_x_discrete(labels = c("0" = "Non-Fixer", "1" = "Fixer")) +
+  facet_wrap(~putative_BNF, scale="free")
 
 
-#and amount of leaf N (most interesting: n fixers or not as x and y, 
-#and three seperate lines for N C and P amounts)
+plot_grid(plot_1, plot_2, plot_3, plot_4, plot_5,
+  plot_6, plot_7, plot_8, plot_9, plot_10, plot_11, plot_12)
+
+plot_grid(plot_1, plot_2, plot_3, plot_4, plot_5,plot_6)
+          
+plot_grid(plot_7, plot_8, plot_9, plot_10, plot_11, plot_12)
 
 ################## Geographical Distribution ###################
 #particularly of most species with highest sample frequency - freq > 50
@@ -177,8 +370,8 @@ nutrient_plots_over_30_under_50 <- plot_grid(
 species_geo_data <- tibble(
   species_binom = austraits_leaf_stoich_tib$species_binom,
   lat = austraits_leaf_stoich_tib$lat_deg,
-  long = austraits_leaf_stoich_tib$long_deg,
-)
+  long = austraits_leaf_stoich_tib$long_deg
+  )
 
 #better way: include frequency in this tibble, avoids all problems down the line
 species_geo_data_freq <- species_geo_data %>%
