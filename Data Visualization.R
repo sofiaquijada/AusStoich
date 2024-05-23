@@ -36,7 +36,6 @@ ggplot(data=species_count_tib, aes(x = reorder(species_binom,-Freq), y = Freq)) 
   ggtitle("Number of Samples per Species")+
   coord_flip()
 
-
 #outlier:Corymbia calophylla which is Myrtaceae Corymbia with 477 samples
 ggplot(data = subset(species_count_tib, Freq <= 200), aes(x = reorder(species_binom, -Freq), y = Freq)) +
   geom_bar(stat="identity", width=0.5, fill="darkgreen") +
