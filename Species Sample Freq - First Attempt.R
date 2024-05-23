@@ -7,7 +7,6 @@ install.packages("tidyverse")
 library(tidyverse)
 
 
-
 ###### species and number of samples - by genus ######
 # number of species on left, species as indep variable 
 
@@ -92,3 +91,5 @@ ggplot(data = species_count_df_binom_no_outliers) +
 #average number of samples without outliers 
 avg_sample_no_outliers_bn <- mean(species_count_df_binom_no_outliers$Freq)
 print(avg_sample_no_outliers_bn) #5.175352
+
+

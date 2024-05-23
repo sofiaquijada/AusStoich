@@ -11,8 +11,6 @@ library(patchwork)
 # 2. Put each variable in a column.
 # 3. For each plot, subset relevant information. 
 
-
-
 raw_data<-read.csv("austraits_leaf_stoichiometry_MASTER.csv")
 
 austraits_leaf_stoich_tib<-as_tibble(raw_data)
@@ -277,7 +275,6 @@ ggplot(leaf_C_data, aes(x = factor(woodiness), y = concentration, fill = nutrien
   scale_fill_manual(values = c("C" = "lightgreen")) +
   labs(x = "Woodiness", y = "Concentration", fill = "Nutrient") +
   ggtitle("C concentrations by Woodiness") +
-  geom_jitter(color = )
   theme_minimal()
 
 ggplot(leaf_concentration_data, aes(x = factor(woodiness), y = concentration, fill = nutrient)) + 
@@ -294,74 +291,54 @@ ggplot(leaf_concentration_data, aes(x=factor(woodiness), y=concentration, fill=n
 
 plot_1 <- ggplot(leaf_C_data, aes(x=factor(woodiness), y=concentration, fill=nutrient)) + 
   geom_boxplot() +
-  scale_fill_manual(values = c("C" = "lightgreen")) +
-  facet_wrap(~woodiness, scale="free")
+  scale_fill_manual(values = c("C" = "lightgreen")) 
 
 plot_2 <- ggplot(leaf_N_data, aes(x=factor(woodiness), y=concentration, fill=nutrient)) + 
   geom_boxplot() +
-  scale_fill_manual(values = c("N" = "pink")) +
-  facet_wrap(~woodiness, scale="free")
+  scale_fill_manual(values = c("N" = "pink"))
 
 plot_3 <- ggplot(leaf_P_data, aes(x=factor(woodiness), y=concentration, fill=nutrient)) + 
   geom_boxplot() +
-  scale_fill_manual(values = c("P" = "lightyellow")) +
-  facet_wrap(~woodiness, scale="free")
+  scale_fill_manual(values = c("P" = "lightyellow"))
 
 plot_4 <- ggplot(leaf_C_data, aes(x=factor(reclass_life_history), y=concentration, fill=nutrient)) + 
   geom_boxplot() +
-  scale_fill_manual(values = c("C" = "lightgreen")) +
-  facet_wrap(~reclass_life_history, scale="free")
+  scale_fill_manual(values = c("C" = "lightgreen")) 
 
 plot_5 <- ggplot(leaf_N_data, aes(x=factor(reclass_life_history), y=concentration, fill=nutrient)) + 
   geom_boxplot() +
-  scale_fill_manual(values = c("N" = "pink")) +
-  facet_wrap(~reclass_life_history, scale="free")
+  scale_fill_manual(values = c("N" = "pink")) 
 
 plot_6 <- ggplot(leaf_P_data, aes(x=factor(reclass_life_history), y=concentration, fill=nutrient)) + 
   geom_boxplot() +
-  scale_fill_manual(values = c("P" = "lightyellow")) +
-  facet_wrap(~reclass_life_history, scale="free")
+  scale_fill_manual(values = c("P" = "lightyellow")) 
 
 plot_7 <- ggplot(leaf_C_data, aes(x=factor(myc_type), y=concentration, fill=nutrient)) + 
   geom_boxplot() +
-  scale_fill_manual(values = c("C" = "lightgreen")) +
-  facet_wrap(~myc_type, scale="free")
+  scale_fill_manual(values = c("C" = "lightgreen"))
 
 plot_8 <- ggplot(leaf_N_data, aes(x=factor(myc_type), y=concentration, fill=nutrient)) + 
   geom_boxplot() +
-  scale_fill_manual(values = c("N" = "pink")) +
-  facet_wrap(~myc_type, scale="free")
+  scale_fill_manual(values = c("N" = "pink"))
 
 plot_9 <- ggplot(leaf_P_data, aes(x=factor(myc_type), y=concentration, fill=nutrient)) + 
   geom_boxplot() +
-  scale_fill_manual(values = c("P" = "lightyellow")) +
-  facet_wrap(~myc_type, scale="free")
+  scale_fill_manual(values = c("P" = "lightyellow")) 
 
 plot_10 <- ggplot(leaf_C_data, aes(x=factor(putative_BNF), y=concentration, fill=nutrient)) + 
   geom_boxplot() +
   scale_fill_manual(values = c("C" = "lightgreen")) +
-  scale_x_discrete(labels = c("0" = "Non-Fixer", "1" = "Fixer")) +
-  facet_wrap(~putative_BNF, scale="free")
+  scale_x_discrete(labels = c("0" = "Non-Fixer", "1" = "Fixer")) 
 
 plot_11 <- ggplot(leaf_N_data, aes(x=factor(putative_BNF), y=concentration, fill=nutrient)) + 
   geom_boxplot() +
   scale_fill_manual(values = c("N" = "pink")) +
-  scale_x_discrete(labels = c("0" = "Non-Fixer", "1" = "Fixer")) +
-  facet_wrap(~putative_BNF, scale="free")
+  scale_x_discrete(labels = c("0" = "Non-Fixer", "1" = "Fixer")) 
 
 plot_12 <- ggplot(leaf_P_data, aes(x=factor(putative_BNF), y=concentration, fill=nutrient)) + 
   geom_boxplot() +
   scale_fill_manual(values = c("P" = "lightyellow")) +
-  scale_x_discrete(labels = c("0" = "Non-Fixer", "1" = "Fixer")) +
-  facet_wrap(~putative_BNF, scale="free")
-
-
-plot_grid(plot_1, plot_2, plot_3, plot_4, plot_5,
-  plot_6, plot_7, plot_8, plot_9, plot_10, plot_11, plot_12)
-
-plot_grid(plot_1, plot_2, plot_3, plot_4, plot_5,plot_6)
-          
-plot_grid(plot_7, plot_8, plot_9, plot_10, plot_11, plot_12)
+  scale_x_discrete(labels = c("0" = "Non-Fixer", "1" = "Fixer")) 
 
 ################## Geographical Distribution ###################
 #particularly of most species with highest sample frequency - freq > 50
