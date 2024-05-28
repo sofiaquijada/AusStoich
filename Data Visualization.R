@@ -391,7 +391,7 @@ australia_over_50_map <- ggplot() +
   geom_polygon(data = australia_map, aes(x = long, y = lat, group = group),
   fill = "lightgray", color = "black")+
   geom_point(data = species_over_50_geo, aes(x = long, y = lat, color = species_binom),
-  shape = 3, size = 2) +
+  size = 2) +
   scale_color_discrete() +
   labs(title = "Species Frequency > 50", x = "Longitude", y = "Latitude") +
   theme_minimal() +
