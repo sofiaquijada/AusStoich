@@ -50,7 +50,7 @@ missing_species <- ITS_tree_species[!(ITS_tree_species %in%
 calc_cv <- function(x) {
   cv <- sd(x) / mean(x)
   return(cv)
-}
+} #currently not using
 
 nutrient_df <-filtered_df[, c("species_binom", "leaf_N_per_dry_mass",
                               "leaf_P_per_dry_mass", "leaf_C_per_dry_mass")]
@@ -83,11 +83,12 @@ avg_nutrient_df <- aggregate(. ~ species_binom, data = nutrient_df, FUN = mean)
 rownames(avg_nutrient_df) <- avg_nutrient_df$species_binom
 avg_nutrient_df <- avg_nutrient_df[match(ITS_tree$tip.label, rownames(avg_nutrient_df)), ]
 #missing species in df shown as NA rows
+#idea: replace as "0"
 
 
 dotTree(ITS_tree, as.matrix(avg_nutrient_df)[,c("leaf_N_per_dry_mass")])
 #kinda useless
-dotTree(ITS_tree, as.matrix(avg_nutrient_df)[,c("leaf_C_per_dry_mass")])
+
 
 
 # Remove NA values from the tip labels
