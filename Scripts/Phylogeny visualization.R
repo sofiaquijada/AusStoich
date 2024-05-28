@@ -2,6 +2,7 @@ install.packages("ape")
 install.packages("phytools")
 install.packages("nlme")
 install.packages("plotrix")
+install.packages("tidytree")
 
 install.packages("BiocManager")
 BiocManager::install("ggtree")
@@ -13,9 +14,12 @@ library(dplyr)
 library(plotrix)
 library(ggtree)
 library(ggplot2)
+library("tidytree")
 
-ITS_tree <- read.nexus("ITS_tree.tre")
-ITS_tree_species <- ITS_tree$tip.label 
+ITS_tree <- read.nexus("Inputs/ITS_tree.tre")
+ITS_tree_tib <- as_tibble(ITS_tree) #NA columns = internal nodes
+
+ITS_tree_species <- ITS_tree$tip.label
 
 plot(ITS_tree, cex = 0.3) #for some reason DQ191445 instead of gingko biloba
 
@@ -26,6 +30,7 @@ plot(ITS_tree, cex = 0.3) #for some reason DQ191445 instead of gingko biloba
 print(ITS_tree_species[length(ITS_tree_species)]) #last entry
 ITS_tree_species[length(ITS_tree_species)] <- "Ginkgo_biloba"
 ITS_tree$tip.label <- ITS_tree_species
+ITS_tree_tib <- as_tibble(ITS_tree) #update tib with proper name
 plot(ITS_tree, cex = 0.3)
 
 #add underscore for spaces between family and genus
@@ -33,19 +38,19 @@ ITS_tree_species <- gsub(" ", "_", ITS_tree_species)
 ITS_tree$tip.label <- ITS_tree_species
 plot(ITS_tree, cex = 0.3)
 
-austraits_leaf_stoich <- read.csv("austraits_leaf_stoichiometry_MASTER_for_phylogeny.csv")
+austraits_leaf_stoich <- read.csv("Inputs/austraits_leaf_stoichiometry_MASTER_for_phylogeny.csv")
 
 
 filtered_df <- austraits_leaf_stoich[austraits_leaf_stoich$species_binom %in%
                                        ITS_tree_species, ] #fine
 num_species <- filtered_df %>% 
-  summarize(num_species = n_distinct(species_binom)) #104, should be 106...
+  summarize(num_species = n_distinct(species_binom)) #105
 missing_species <- ITS_tree_species[!(ITS_tree_species %in% 
                                         austraits_leaf_stoich$species_binom)]
-#in the tree but not in our data: Ginkgo_bilboa, Eucalyptus_trivalvis 
+#in the tree but not in our data: Ginkgo_bilboa, outgroup
 
 
-################## Tree plots with Average Nutrient Values ###################
+################## Data Tidying ###################
 #function to calculate coefficient of variation
 calc_cv <- function(x) {
   cv <- sd(x) / mean(x)
@@ -70,7 +75,7 @@ nutrient_df <- nutrient_df %>%
                                                              na.rm = TRUE),
          CV_C = sd(leaf_C_per_dry_mass, na.rm = TRUE) / mean(leaf_C_per_dry_mass,
                                                              na.rm = TRUE))
-length(unique(nutrient_df$species_binom)) #104 so ok 
+length(unique(nutrient_df$species_binom)) #105 so ok 
 
 #to properly aggregate, will replace all NaN arising from dividing by 0 to 0 
 #a CV of 0 could mean the mean is 0, or the standard deviation is 0
@@ -82,49 +87,30 @@ avg_nutrient_df <- aggregate(. ~ species_binom, data = nutrient_df, FUN = mean)
 #use rownames and reorder 
 rownames(avg_nutrient_df) <- avg_nutrient_df$species_binom
 avg_nutrient_df <- avg_nutrient_df[match(ITS_tree$tip.label, rownames(avg_nutrient_df)), ]
-#missing species in df shown as NA rows
-#idea: replace as "0"
+#replace row names, and set NA values to 0 
+avg_nutrient_df$species_binom[51] <- "Eucalyptus_trivalva" #most recent naming
+avg_nutrient_df$species_binom[106] <- "Ginkgo_biloba"
+avg_nutrient_df <- avg_nutrient_df %>%
+  mutate_all(~replace(., is.na(.), 0))
+rownames(avg_nutrient_df) <- avg_nutrient_df$species_binom
+avg_nutrient_df <- avg_nutrient_df %>%
+  rename(label = species_binom) 
 
+avg_nutrient_tib <- as_tibble(avg_nutrient_df) 
 
+ITS_tree_nutrient_tib <- left_join(ITS_tree_tib,
+                  avg_nutrient_tib, by = "label") 
+
+write.csv(ITS_tree_nutrient_tib, "ITS_tree_nutrient_data.csv",
+          row.names = FALSE)
+
+################## Tree Nutrient Plots ###################
+#nutrient concentrations
 dotTree(ITS_tree, as.matrix(avg_nutrient_df)[,c("leaf_N_per_dry_mass")])
 #kinda useless
 
 
 
-# Remove NA values from the tip labels
-non_na_labels_N <- na.omit(as.character(avg_nutrient_df$leaf_N_per_dry_mass))
-non_na_labels_N <- non_na_labels[!is.na(non_na_labels)]
-
-#base plot
-plot(ITS_tree, cex = 0.3, main = "Mean N")
-# Add tip labels
-tiplabels(non_na_labels_N, adj = c(1, 0), frame = "none", cex = 0.3)
+#covariance 
 
 
-non_na_labels_P <- na.omit(as.character(avg_nutrient_df$leaf_P_per_dry_mass))
-non_na_labels_P <- non_na_labels[!is.na(non_na_labels)]
-plot(ITS_tree, cex = 0.3, main = "Mean P")
-# Add tip labels
-tiplabels(non_na_labels, adj = c(1, 0), frame = "none", cex = 0.3)
-
-#this is wrong,,,, idk where numbers are coming from, there is no difference
-#note: labels were not labelled until NA values ommited somehow
-#so maybe go back and set NA labels as 0 or smth 
-
-#maybe do bar plot w phylogenetic tree to visualize nutrient concentration 
-#in each species?
-
-matched_labels <- avg_nutrient_df$species_binom %in% ITS_tree$tip.label
-
-# Print the unmatched labels
-print(avg_nutrient_df$species_binom[!matched_labels])
-
-#p <- plot(ITS_tree, cex = 0.3)
-#p2 <- facet_plot(p, panel="bar", data=avg_nutrient_df, geom=geom_segment, aes(x=species_binom), color='red3')
-
-
-
-
-
-################## Tree plots with Covariance ###################
-#create covariance columns: done in avg_nutrient_df
