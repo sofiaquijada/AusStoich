@@ -20,7 +20,7 @@ austraits_leaf_stoich_tib<-as_tibble(raw_data)
 #alternate method to count sample number of species:
 #count <- austraits_leaf_stoich_tib %>% count(austraits_leaf_stoich_tib$species_binom)
 
-species_binom <- austraits_leaf_stoichiometry_MASTER$species_binom
+species_binom <- raw_data$species_binom
 #count sample number of species
 species_count_tab <- table(species_binom)
 #table to df
@@ -423,7 +423,7 @@ species_over_30_under_50 <- filter(species_geo_data_freq, frequency > 30, freque
 
 australia_over_30_map <- ggplot() +
   geom_polygon(data = australia_map, aes(x = long, y = lat, group = group),
-               fill = "lightgray", color = "black") +
+               fill = "lightgray", color = "black") + coord_quickmap()+
   geom_point(data = species_over_30_under_50, aes(x = long, y = lat, color = species_binom),
   shape = 3, size = 2) +
   labs(title = "30 < Species Frequency < 50", x = "Longitude", y = "Latitude") +
@@ -451,5 +451,9 @@ plot_grid(
   rel_widths = c(1, 2)
 )
 
+#initials before files we add
+#package "here" 
+#when loading data, use this first, so two people can have seperate projects
+#
 
           
