@@ -15,7 +15,7 @@ raw_data<-read.csv("austraits_leaf_stoichiometry_MASTER.csv")
 
 austraits_leaf_stoich_tib<-as_tibble(raw_data)
 
-################## Number of Samples per Species ###################
+#---------------- Number of Samples per Species ----------------
 
 #alternate method to count sample number of species:
 #count <- austraits_leaf_stoich_tib %>% count(austraits_leaf_stoich_tib$species_binom)
@@ -68,7 +68,7 @@ ggplot(data = subset((species_count_tib), Freq > m), aes(x = reorder(species_bin
 
 
 # How many woody/non-woody, nitrogen fixers/non fixers 
-################## Amount Types ##################
+#---------------- Amount Types ----------------
 
 #woodiness
 woodiness_count_bar <- ggplot(data = leaf_data, aes(x = woodiness)) +
@@ -107,7 +107,7 @@ categorical_counts <- plot_grid(
   myc_type_count_bar)
 
 
-################## Leaf Nutrient Concentrations ###################
+#---------------- Leaf Nutrient Concentrations ----------------
 
 #take at look at warning, are there missing values - yes where there is NA
 #nitrogen has no NA
@@ -339,7 +339,8 @@ plot_12 <- ggplot(leaf_P_data, aes(x=factor(putative_BNF), y=concentration, fill
   scale_fill_manual(values = c("P" = "lightyellow")) +
   scale_x_discrete(labels = c("0" = "Non-Fixer", "1" = "Fixer")) 
 
-################## Geographical Distribution ###################
+
+#---------------- Geographical Distribution ----------------
 #particularly of most species with highest sample frequency - freq > 50
 
 #create tibble of just species geo data
@@ -451,9 +452,86 @@ plot_grid(
   rel_widths = c(1, 2)
 )
 
+#---------------- Avg Nutrient Plots  ----------------
+#create average nutrient dataframe but with ALL species
+#avg nutrient & CV dataframe
+
+#need to add counts column to this to properly normalize
+#x: counts, y: concentration. see if normal, if not then plot transformed values
+
+#leaf data has count built in already
+all_species_nutr_data <- leaf_data[,c("species_binom", "leaf_N_per_dry_mass",
+                             "leaf_P_per_dry_mass", "leaf_C_per_dry_mass",
+                             "NP_ratio", "CN_ratio", "CP_ratio", 
+                             "frequency")]
+#replace NAs with 0 
+all_species_nutr_data <- all_species_nutr_data %>%
+  mutate_all(~replace(., is.na(.), 0))
+
+#order alphabetically
+all_species_nutr_data <- all_species_nutr_data[order(all_species_nutr_data$species_binom),]
+
+#add coefficient of variation
+all_species_nutr_data <- all_species_nutr_data %>%
+  group_by(species_binom) %>%
+  mutate(CV_N = sd(leaf_N_per_dry_mass, na.rm = TRUE) / mean(leaf_N_per_dry_mass,
+                                                             na.rm = TRUE),
+         CV_P = sd(leaf_P_per_dry_mass, na.rm = TRUE) / mean(leaf_P_per_dry_mass,
+                                                             na.rm = TRUE),
+         CV_C = sd(leaf_C_per_dry_mass, na.rm = TRUE) / mean(leaf_C_per_dry_mass,
+                                                             na.rm = TRUE))
+#fill NA and NaN with 0                                                        
+all_species_nutr_data <- all_species_nutr_data %>%
+  mutate_all(~replace(., is.na(.), 0))
+
+all_species_nutr_data <- all_species_nutr_data %>%
+  mutate_all(~replace(.,is.nan(.), 0))
+
+all_species_nutr_data<- aggregate(. ~ species_binom,
+                                  data = all_species_nutr_data, FUN = mean)
+
+#plot by frequency 
+ggplot(all_species_nutr_data, aes(x = frequency, y = leaf_N_per_dry_mass)) + 
+  geom_bar(stat = "identity", fill = "lightpink") +
+  labs(title = "All Species")+
+  theme_minimal()
+
+#create transformed data
+trns_all_sp_nut<- all_species_nutr_data%>% 
+  mutate(
+    ln_N = log(leaf_N_per_dry_mass),
+    log_10_N = log10(leaf_N_per_dry_mass),
+    sqrt_N = sqrt(leaf_N_per_dry_mass),
+    ln_C = log(leaf_C_per_dry_mass),
+    log_10_C = log10(leaf_C_per_dry_mass),
+    sqrt_C = sqrt(leaf_C_per_dry_mass),
+    ln_P = log(leaf_P_per_dry_mass),
+    log_10_P = log10(leaf_P_per_dry_mass),
+    sqrt_P = sqrt(leaf_P_per_dry_mass)
+  )
+trns_all_sp_nut[trns_all_sp_nut == "-Inf"] <- 0
+
+ggplot(trns_all_sp_nut, aes(x = frequency, y = ln_N)) + 
+  geom_bar(stat = "identity", fill = "lightpink") +
+  labs(title = "All Species")+
+  theme_minimal()
+
+data = subset(species_count_tib, Freq > 30 & Freq < 50),
+
+#---------------- Ratio Histograms  ----------------
+#ensure they are normal 
+
+
+
+
 #initials before files we add
 #package "here" 
 #when loading data, use this first, so two people can have seperate projects
-#
+
+
+
+
+
+
 
           
