@@ -15,6 +15,17 @@ raw_data<-read.csv("austraits_leaf_stoichiometry_MASTER.csv")
 
 austraits_leaf_stoich_tib<-as_tibble(raw_data)
 
+#---------------- Function Definitions ----------------
+
+#make a function that returns a plot
+#i guess a different one for every type of plot? 
+
+#make a function that stitches plots together 
+#have infinite inputs? will look into this 
+
+
+#------------------------------------------------------
+
 #---------------- Number of Samples per Species ----------------
 
 #alternate method to count sample number of species:
@@ -60,11 +71,12 @@ ggplot(data = subset((species_count_tib), Freq > m), aes(x = reorder(species_bin
   ggtitle(paste("Number of Samples per Species, Freq >", m)) +
   coord_flip() 
 
-
 #summary data
 #10464 samples
 #1421 species
 #5.175352 average number of samples without main outlier
+
+#------------------------------------------------------
 
 
 # How many woody/non-woody, nitrogen fixers/non fixers 
@@ -338,6 +350,9 @@ plot_12 <- ggplot(leaf_P_data, aes(x=factor(putative_BNF), y=concentration, fill
   geom_boxplot() +
   scale_fill_manual(values = c("P" = "lightyellow")) +
   scale_x_discrete(labels = c("0" = "Non-Fixer", "1" = "Fixer")) 
+#will rewrite using functions
+
+#------------------------------------------------------
 
 
 #---------------- Geographical Distribution ----------------
@@ -451,6 +466,9 @@ plot_grid(
   labels = "AUTO", 
   rel_widths = c(1, 2)
 )
+#rewrite using functions
+#------------------------------------------------------
+
 
 #---------------- Avg Nutrient Plots  ----------------
 #create average nutrient dataframe but with ALL species
@@ -490,9 +508,20 @@ all_species_nutr_data <- all_species_nutr_data %>%
 all_species_nutr_data<- aggregate(. ~ species_binom,
                                   data = all_species_nutr_data, FUN = mean)
 
-#plot by frequency 
-ggplot(all_species_nutr_data, aes(x = frequency, y = leaf_N_per_dry_mass)) + 
+#plot by species
+ggplot(all_species_nutr_data, aes(x = species_binom, y = leaf_N_per_dry_mass)) + 
   geom_bar(stat = "identity", fill = "lightpink") +
+  labs(title = "All Species")+
+  theme_minimal()
+
+#plot by frequency - has to be point
+#ggplot(all_species_nutr_data, aes(x = frequency, y = leaf_N_per_dry_mass)) + 
+  #geom_point(stat = "identity", fill = "lightpink") +
+  #labs(title = "All Species")+
+  #theme_minimal()
+
+ggplot(all_species_nutr_data, aes(x = leaf_N_per_dry_mass, y = frequency)) + 
+  geom_point(stat = "identity", fill = "lightpink") +
   labs(title = "All Species")+
   theme_minimal()
 
@@ -510,23 +539,61 @@ trns_all_sp_nut<- all_species_nutr_data%>%
     sqrt_P = sqrt(leaf_P_per_dry_mass)
   )
 trns_all_sp_nut[trns_all_sp_nut == "-Inf"] <- 0
+trns_all_sp_nut[trns_all_sp_nut == "0"] <- NA
 
-ggplot(trns_all_sp_nut, aes(x = frequency, y = ln_N)) + 
-  geom_bar(stat = "identity", fill = "lightpink") +
+ggplot(trns_all_sp_nut, aes(x = log_10_N, y = frequency)) + 
+  geom_point(stat = "identity") +
   labs(title = "All Species")+
   theme_minimal()
 
-data = subset(species_count_tib, Freq > 30 & Freq < 50),
+
 
 #---------------- Ratio Histograms  ----------------
 #ensure they are normal 
+#x = ratio, y = frequency 
+
+#NP
+#CN
+#CP
+
+ggplot(trns_all_sp_nut, aes(x = CP_ratio, y = frequency)) + 
+  geom_point(stat = "identity") +
+  labs(title = "All Species")+
+  theme_minimal() #this is not the best approach, use geom_histogram()
+#if geom_bar is used - a lot of points get cut for some reason
+
+#make df with transformed data 
+raw_nutrient_data <- austraits_leaf_stoich[,c("species_binom",
+                      "leaf_N_per_dry_mass", "leaf_P_per_dry_mass",
+                      "leaf_C_per_dry_mass", "NP_ratio", "CN_ratio",
+                      "CP_ratio")]
+nutrient_data <- raw_nutrient_data %>% 
+  mutate(
+    ln_N = log(leaf_N_per_dry_mass),
+    log_10_N = log10(leaf_N_per_dry_mass),
+    sqrt_N = sqrt(leaf_N_per_dry_mass),
+    ln_C = log(leaf_C_per_dry_mass),
+    log_10_C = log10(leaf_C_per_dry_mass),
+    sqrt_C = sqrt(leaf_C_per_dry_mass),
+    ln_P = log(leaf_P_per_dry_mass),
+    log_10_P = log10(leaf_P_per_dry_mass),
+    sqrt_P = sqrt(leaf_P_per_dry_mass)
+  ) 
+
+#sample histogram code
+ggplot(nutrient_data, aes(x = leaf_N_per_dry_mass)) +
+  geom_histogram(bins = 50) +
+  labs(title = "All Species")
+#bin width = bar width
+#not too big, not to small 
+
+#notes: sqrtx is probably best since all P values are < 1
+
+ggplot(nutrient_data, aes(x = CP_ratio)) +
+  geom_histogram(bins = 100) +
+  labs(title = "All Species")
 
 
-
-
-#initials before files we add
-#package "here" 
-#when loading data, use this first, so two people can have seperate projects
 
 
 

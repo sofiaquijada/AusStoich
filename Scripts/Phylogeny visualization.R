@@ -22,6 +22,15 @@ library(tibble)
 library(tidyverse)
 library(cowplot)
 
+
+
+#---------------- Function Definitions ----------------
+
+
+
+
+#------------------------------------------------------
+
 ITS_tree <- read.nexus("Inputs/ITS_tree.tre")
 ITS_tree_tib <- as_tibble(ITS_tree) #NA columns = internal nodes
 
@@ -212,9 +221,9 @@ ggplot(trns_avg_nut_df, aes(x = label, y = ln_C)) +
   labs(title = "ITS tree species") +
   theme_minimal()
 
-#by frequency - has to be point
-ggplot(trns_avg_nut_df, aes(x = frequency, y = sqrt_N)) + 
-  geom_point(stat = "identity", fill = "lightpink") +
+#by frequency
+ggplot(trns_avg_nut_df, aes(x = ln_N, y = frequency)) + 
+  geom_bar(stat = "identity") +
   labs(title = "ITS tree species") +
   theme_minimal() 
 
