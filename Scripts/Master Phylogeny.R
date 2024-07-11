@@ -65,10 +65,10 @@ sp_in_aus_not_in_tpl_2 <- sort(unique(sp_in_aus_not_in_tpl_2))
 length(sp_in_aus_not_in_tpl_2) #619
 
 #genus level
-TPL_genus_2 <- tips.info %>%
+TPL_genus_2 <- tips.info.TPL %>%
   mutate(
-    family_genus = paste(tips.info$family,
-                         tips.info$genus,sep=" "))
+    family_genus = paste(tips.info.TPL$family,
+                         tips.info.TPL$genus,sep=" "))
 
 sp_in_aus_not_in_tpl_genus_2 <- 
   austraits_leaf_stoich_genus$family_genus[!(austraits_leaf_stoich_genus$family_genus
@@ -76,44 +76,130 @@ sp_in_aus_not_in_tpl_genus_2 <-
 sp_in_aus_not_in_tpl_genus_2 <- sort(unique(sp_in_aus_not_in_tpl_genus_2)) 
 length(sp_in_aus_not_in_tpl_genus_2)#58, same as V.PhyloMaker1
 
-
-#-------- LCVP database --------#
-# this database has a package available for name standardization
-devtools::install_github("idiv-biodiversity/LCVP")
-devtools::install_github("idiv-biodiversity/lcvplants")
-library(lcvplants)
-
-sp_in_aus_not_in_LCVP <- austraits_leaf_stoich$species_binom[!(austraits_leaf_stoich$species_binom
-                                           %in% tips.info.LCVP$species)]#3158
-sp_in_aus_not_in_LCVP <- sort(unique(sp_in_aus_not_in_LCVP))
-length(sp_in_aus_not_in_LCVP) #613
-sp_in_aus_not_in_LCVP <- data.frame(sp_in_aus_not_in_LCVP)
-
-#genus level
-LCVP_genus <- tips.info %>%
-  mutate(
-    family_genus = paste(tips.info$family,
-                         tips.info$genus,sep=" "))
-
-sp_in_aus_not_in_LCVP_genus <- 
-  austraits_leaf_stoich_genus$family_genus[!(austraits_leaf_stoich_genus$family_genus
-                                             %in% TPL_genus_2$family_genus)]
-sp_in_aus_not_in_LCVP_genus <- sort(unique(sp_in_aus_not_in_LCVP_genus))
-length(sp_in_aus_not_in_LCVP_genus) #58
-sp_in_aus_not_in_LCVP_genus <- data.frame(sp_in_aus_not_in_LCVP_genus)
-
 #-------- WP database --------#
-sp_in_aus_not_in_WP <- austraits_leaf_stoich$species_binom[!(austraits_leaf_stoich$species_binom
-                                                %in% tips.info.WP$species)] #3102
-sp_in_aus_not_in_WP <- unique(sp_in_aus_not_in_WP) 
-length(sp_in_aus_not_in_WP)#619
 
-WP_genus <- tips.info %>%
+sp_in_aus_not_in_WP <- austraits_leaf_stoich$species_binom[!(austraits_leaf_stoich$species_binom
+                                                             %in% tips.info.WP$species)] #3102
+sp_in_aus_not_in_WP <- unique(sp_in_aus_not_in_WP) 
+length(sp_in_aus_not_in_WP) #619
+
+WP_genus <- tips.info.WP %>%
   mutate(
-    family_genus = paste(tips.info$family,
-                         tips.info$genus,sep=" "))
+    family_genus = paste(tips.info.WP$family,
+                         tips.info.WP$genus,sep=" "))
 sp_in_aus_not_in_WP_genus <- 
   austraits_leaf_stoich_genus$family_genus[!(austraits_leaf_stoich_genus$family_genus
                                              %in% TPL_genus_2$family_genus)]
 sp_in_aus_not_in_WP_genus <- unique(sp_in_aus_not_in_WP_genus) 
 length(sp_in_aus_not_in_WP_genus) #58
+
+#-------- LCVP database --------#
+# this database has a package available for name standardization
+devtools::install_github("idiv-biodiversity/LCVP")
+library(LCVP)
+devtools::install_github("idiv-biodiversity/lcvplants")
+library(lcvplants)
+
+sp_in_aus_not_in_LCVP <- austraits_leaf_stoich$species_binom[!(austraits_leaf_stoich$species_binom
+                                                               %in% tips.info.LCVP$species)]#3158
+sp_in_aus_not_in_LCVP <- sort(unique(sp_in_aus_not_in_LCVP))
+length(sp_in_aus_not_in_LCVP) #613
+
+lcvp_search <- lcvp_search(sp_in_aus_not_in_LCVP)
+#didn't work because "Ichnocarpus" is not binom
+
+sp_in_aus_not_in_LCVP_no_ich <- sp_in_aus_not_in_LCVP [! 
+                                sp_in_aus_not_in_LCVP %in% c("Ichnocarpus")]
+lcvp_search <- lcvp_search(sp_in_aus_not_in_LCVP_no_ich)
+lcvp_summary(lcvp_search)
+
+lcvp_fuzzy_srch <- lcvp_fuzzy_search(sp_in_aus_not_in_LCVP_no_ich, progress_bar = TRUE)
+lcvp_summary(lcvp_fuzzy_srch) #for some reason no species included here
+
+#genus level
+LCVP_genus <- tips.info.LCVP %>% 
+  mutate(
+    family_genus = paste(tips.info.LCVP$family,
+                         tips.info.LCVP$genus,sep=" "))
+
+sp_in_aus_not_in_LCVP_genus <- 
+  austraits_leaf_stoich_genus$family_genus[!(austraits_leaf_stoich_genus$family_genus
+                                             %in% LCVP_genus$family_genus)]
+sp_in_aus_not_in_LCVP_genus <- sort(unique(sp_in_aus_not_in_LCVP_genus))
+length(sp_in_aus_not_in_LCVP_genus) #59
+
+austraits_genus <- austraits_leaf_stoich_genus %>%
+  select(species = species_binom, genus, family) #includes ichnocarpus entry
+
+#remove double entries
+austraits_genus <- austraits_genus %>%
+  distinct(species, .keep_all = TRUE) #1421 species
+
+#need to make a database of austraits_genus w/o lcvp_search species
+#lcvp_search species = sp_in_aus_not_in_LCVP_no_ich
+
+sp_in_aus_not_in_LCVP_df <- data.frame(sp_in_aus_not_in_LCVP) 
+#includes ichnocarpus entry
+
+#remove lcvp_search species
+austraits_wo_lcvp_search <- austraits_genus %>%
+  anti_join(sp_in_aus_not_in_LCVP_df, 
+            by = c("species" = "sp_in_aus_not_in_LCVP")) #Ichnocarpus not included
+
+write.csv(austraits_wo_lcvp_search, "Inputs/austraits_wo_lcvp_search.csv",
+          row.names = FALSE)
+
+#joining dataframes done in excel
+#austraits_wo_lcvp_search added to corrected lcvp_search species &
+#to manual correction of genus
+
+#first run through of phylo.maker still had 11 family names to fix
+#done manually in excel
+
+austraits_all_pos_sp <- read.csv("Inputs/all_pos_austraits_LCVP_sp.csv")
+
+#want to know how many entries are lost from austraits_leaf_stoich
+#with this species list
+
+austraits_genus_w_lcvp_tree <- phylo.maker(sp.list = austraits_all_pos_sp,
+                                           tree = GBOTB.extended.LCVP,
+                                           nodes = nodes.info.1.LCVP,
+                                           scenarios="S3")
+
+write.tree(austraits_genus_w_lcvp_tree$scenario.3, "austraits_genus_w_lcvp_tree.tre")
+
+attempt_1 <- read.tree("austraits_genus_w_lcvp_tree.tre")
+plot(attempt_1, cex= 0.1) #this has all possible species in it
+
+#want to know how many entries from leaf_stoich are lost using these final names
+austraits_raw_genus <- austraits_leaf_stoich_genus %>%
+  +     select(species = species_binom, genus, family) #7826 entries
+#need to correct 46 names according to all_naming_corrections.csv 
+
+all_naming_corrections <- read.csv("Inputs/all_naming_corrections.csv")
+
+austraits_corrected <- austraits_raw_genus %>%
+  left_join(all_naming_corrections, by = c("species" = "species_before_correction",
+                                           "genus" = "genus_before_correction",
+                                           "family" = "family_before_correction")) %>%
+  mutate(
+    species = ifelse(!is.na(species_after_correction), species_after_correction, species),
+    genus = ifelse(!is.na(genus_after_correction), genus_after_correction, genus),
+    family = ifelse(!is.na(family_after_correction), family_after_correction, family)
+  ) %>%
+  select(species, genus, family)
+
+sp_in_cor_aus_not_in_LCVP <- austraits_corrected$species[!(austraits_corrected$species
+                                                               %in% tips.info.LCVP$species)]
+length(sp_in_cor_aus_not_in_LCVP) #2997
+length(unique(sp_in_cor_aus_not_in_LCVP)) #587, same number as failed lcvp_search names
+#makes sense
+
+sp_in_cor_aus_not_in_LCVP_no_ich <- sp_in_cor_aus_not_in_LCVP [! 
+                                                         sp_in_cor_aus_not_in_LCVP
+                                                         %in% c("Ichnocarpus")]
+lcvp_sanity_check <- lcvp_search(sp_in_cor_aus_not_in_LCVP_no_ich)
+lcvp_summary(lcvp_sanity_check) #same ones that are missing, so all good 
+
+
+

@@ -212,6 +212,7 @@ trns_avg_nut_df <- avg_nutrient_df %>%
     log_10_P = log10(leaf_P_per_dry_mass),
     sqrt_P = sqrt(leaf_P_per_dry_mass)
   )
+
 #replace -inf with NA
 trns_avg_nut_df[trns_avg_nut_df == "-Inf"] <- 0
 
