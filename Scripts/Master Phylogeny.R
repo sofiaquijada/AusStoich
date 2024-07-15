@@ -2,7 +2,7 @@ install.packages("devtools")
 library(devtools)
 devtools::install_github("jinyizju/V.PhyloMaker")
 library(ape)
-library(V.PhyloMaker)
+library(V.PhyloMaker2)
 library(dplyr)
 
 setwd("/Users/sofiaquijada/Documents/McGill/2024 Soper Lab/AusStoich")
@@ -14,7 +14,7 @@ austraits_leaf_stoich <-
   read.csv("Inputs/austraits_leaf_stoichiometry_MASTER_for_phylogeny.csv")
 
 
-# ------------------------- V.PhyloMaker ------------------------- #
+##########---------V.PhyloMaker---------##########
 #species in austraits all in GBOTB?
 all(austraits_leaf_stoich$species_binom %in% tips.info$species) #FALSE
 
@@ -52,13 +52,13 @@ length(unique(sp_in_aus_not_in_tpl_genus)) #58
 
 
 #try updated package
-# ------------------------- V.PhyloMaker 2 ------------------------- #
+##########---------V.PhyloMaker2---------##########
 devtools::install_github("jinyizju/V.PhyloMaker2")
 library(V.PhyloMaker2)
 #package has three tre files: how many species in austraits are in these databases?
 #species level, and genus level
 
-#-------- TPL database --------#
+##########---------TPL database---------##########
 sp_in_aus_not_in_tpl_2 <- austraits_leaf_stoich$species_binom[!(austraits_leaf_stoich$species_binom
                                         %in% tips.info.TPL$species)]#3072
 sp_in_aus_not_in_tpl_2 <- sort(unique(sp_in_aus_not_in_tpl_2))
@@ -76,7 +76,7 @@ sp_in_aus_not_in_tpl_genus_2 <-
 sp_in_aus_not_in_tpl_genus_2 <- sort(unique(sp_in_aus_not_in_tpl_genus_2)) 
 length(sp_in_aus_not_in_tpl_genus_2)#58, same as V.PhyloMaker1
 
-#-------- WP database --------#
+##########--------WP database---------##########
 
 sp_in_aus_not_in_WP <- austraits_leaf_stoich$species_binom[!(austraits_leaf_stoich$species_binom
                                                              %in% tips.info.WP$species)] #3102
@@ -93,7 +93,7 @@ sp_in_aus_not_in_WP_genus <-
 sp_in_aus_not_in_WP_genus <- unique(sp_in_aus_not_in_WP_genus) 
 length(sp_in_aus_not_in_WP_genus) #58
 
-#-------- LCVP database --------#
+##########---------LCVP database - name standardization---------##########
 # this database has a package available for name standardization
 devtools::install_github("idiv-biodiversity/LCVP")
 library(LCVP)
@@ -124,10 +124,16 @@ LCVP_genus <- tips.info.LCVP %>%
 
 sp_in_aus_not_in_LCVP_genus <- 
   austraits_leaf_stoich_genus$family_genus[!(austraits_leaf_stoich_genus$family_genus
-                                             %in% LCVP_genus$family_genus)]
+                                             %in% LCVP_genus$family_genus)] 
 sp_in_aus_not_in_LCVP_genus <- sort(unique(sp_in_aus_not_in_LCVP_genus))
 length(sp_in_aus_not_in_LCVP_genus) #59
+#this has list of Family Genus whose family_genus entries are not in LCVP genus
+#there could be many species with these missing/wrong family genus entries
 
+sp_in_aus_in_LCVP_genus <- intersect(austraits_leaf_stoich_genus$family_genus, LCVP_genus$family_genus)
+sp_in_aus_in_LCVP_genus <- sort(unique(sp_in_aus_in_LCVP_genus))
+length(sp_in_aus_in_LCVP_genus) #372, which is 431 - 59
+  
 austraits_genus <- austraits_leaf_stoich_genus %>%
   select(species = species_binom, genus, family) #includes ichnocarpus entry
 
@@ -156,24 +162,11 @@ write.csv(austraits_wo_lcvp_search, "Inputs/austraits_wo_lcvp_search.csv",
 #first run through of phylo.maker still had 11 family names to fix
 #done manually in excel
 
-austraits_all_pos_sp <- read.csv("Inputs/all_pos_austraits_LCVP_sp.csv")
-
-#want to know how many entries are lost from austraits_leaf_stoich
-#with this species list
-
-austraits_genus_w_lcvp_tree <- phylo.maker(sp.list = austraits_all_pos_sp,
-                                           tree = GBOTB.extended.LCVP,
-                                           nodes = nodes.info.1.LCVP,
-                                           scenarios="S3")
-
-write.tree(austraits_genus_w_lcvp_tree$scenario.3, "austraits_genus_w_lcvp_tree.tre")
-
-attempt_1 <- read.tree("austraits_genus_w_lcvp_tree.tre")
-plot(attempt_1, cex= 0.1) #this has all possible species in it
+##########---------LCVP naming summary---------##########
 
 #want to know how many entries from leaf_stoich are lost using these final names
-austraits_raw_genus <- austraits_leaf_stoich_genus %>%
-  +     select(species = species_binom, genus, family) #7826 entries
+austraits_raw_genus <- austraits_leaf_stoich_genus %>% 
+  select(species = species_binom, genus, family) #7826 entries
 #need to correct 46 names according to all_naming_corrections.csv 
 
 all_naming_corrections <- read.csv("Inputs/all_naming_corrections.csv")
@@ -190,16 +183,99 @@ austraits_corrected <- austraits_raw_genus %>%
   select(species, genus, family)
 
 sp_in_cor_aus_not_in_LCVP <- austraits_corrected$species[!(austraits_corrected$species
-                                                               %in% tips.info.LCVP$species)]
+                                                           %in% tips.info.LCVP$species)]
 length(sp_in_cor_aus_not_in_LCVP) #2997
 length(unique(sp_in_cor_aus_not_in_LCVP)) #587, same number as failed lcvp_search names
 #makes sense
 
 sp_in_cor_aus_not_in_LCVP_no_ich <- sp_in_cor_aus_not_in_LCVP [! 
-                                                         sp_in_cor_aus_not_in_LCVP
-                                                         %in% c("Ichnocarpus")]
+                                                                 sp_in_cor_aus_not_in_LCVP
+                                                               %in% c("Ichnocarpus")]
 lcvp_sanity_check <- lcvp_search(sp_in_cor_aus_not_in_LCVP_no_ich)
 lcvp_summary(lcvp_sanity_check) #same ones that are missing, so all good 
+
+austraits_unique_corrected <- austraits_corrected %>%
+  distinct(species, .keep_all = TRUE) #1415 species, not 1421 (probably due to synonyms)
+
+##########---------austraits_leaf_stoich Data Tidying---------##########
+
+#name correction
+austraits_leaf_stoich <- austraits_raw_genus %>%
+  left_join(all_naming_corrections, by = c("species" = "species_before_correction",
+                                           "genus" = "genus_before_correction",
+                                           "family" = "family_before_correction")) %>%
+  mutate(
+    species = ifelse(!is.na(species_after_correction), species_after_correction, species),
+    genus = ifelse(!is.na(genus_after_correction), genus_after_correction, genus),
+    family = ifelse(!is.na(family_after_correction), family_after_correction, family)
+  ) %>%
+  select(species, genus, family)
+
+#outliers (nutrient outliers)
+
+
+#structure analysis
+
+
+
+##########---------austraits_all_pos_sp.tre---------##########
+
+austraits_all_pos_sp_df <- read.csv("Inputs/all_pos_austraits_LCVP_sp.csv")
+
+austraits_all_pos_sp <- phylo.maker(sp.list = austraits_all_pos_sp_df,
+                                           tree = GBOTB.extended.LCVP,
+                                           nodes = nodes.info.1.LCVP,
+                                           scenarios="S3")
+
+write.tree(austraits_all_pos_sp$scenario.3,
+           "Inputs/austraits_all_pos_sp.tre")
+
+austraits_all_pos_sp_tree<- read.tree("Inputs/austraits_all_pos_sp.tre")
+plot(austraits_all_pos_sp_tree, cex= 0.1) #this has all possible species in it
+
+austraits_all_pos_sp_tree_tib <- as_tibble(austraits_all_pos_sp_tree)
+#use left join to join with nutrient data 
+
+##########---------austraits_one_rep_per_gen.tre & genera lost---------##########
+
+#this tree will have one species representative per genus 
+#431 total genera, so csv should have 431 - some number entries
+
+#set seed for reproducibility
+set.seed(111)
+austraits_one_rep_per_gen_df <- austraits_all_pos_sp_df %>%
+  group_by(genus) %>%
+  slice_sample(n = 1) %>%
+  ungroup()
+austraits_one_rep_per_gen_df <- data.frame(austraits_one_rep_per_gen_df) #not tibble
+#286 entries??? way too low... 
+
+#431 - 286 = 145
+
+gen_in_allposp_not_in_one_rep <- 
+  austraits_all_pos_sp_df$genus[!(austraits_all_pos_sp_df$genus
+                                                  %in% austraits_one_rep_per_gen$genus)]#0 
+length(unique(austraits_genus$genus)) #431 
+
+gen_in_aus_not_in_one_rep<- data.frame(austraits_unique_corrected$genus[!(austraits_unique_corrected$genus
+                                        %in% austraits_one_rep_per_gen$genus)]) #219
+#219 will include names not found to species level
+#make tree anyway
+
+austraits_one_rep_per_gen <- phylo.maker(sp.list = austraits_one_rep_per_gen_df,
+                                    tree = GBOTB.extended.LCVP,
+                                    nodes = nodes.info.1.LCVP,
+                                    scenarios="S3")
+
+write.tree(austraits_one_rep_per_gen$scenario.3,
+           "Inputs/austraits_one_rep_per_gen.tre")
+
+austraits_one_rep_per_gen_tree<- read.tree("Inputs/austraits_one_rep_per_gen.tre")
+plot(austraits_one_rep_per_gen_tree, cex= 0.1)
+
+
+
+
 
 
 
