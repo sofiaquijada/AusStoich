@@ -567,6 +567,7 @@ raw_nutrient_data <- austraits_leaf_stoich[,c("species_binom",
                       "leaf_N_per_dry_mass", "leaf_P_per_dry_mass",
                       "leaf_C_per_dry_mass", "NP_ratio", "CN_ratio",
                       "CP_ratio")]
+
 nutrient_data <- raw_nutrient_data %>% 
   mutate(
     ln_N = log(leaf_N_per_dry_mass),

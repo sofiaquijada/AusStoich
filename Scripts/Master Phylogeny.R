@@ -13,7 +13,6 @@ setwd("/Users/sofiaquijada/Documents/McGill/2024 Soper Lab/AusStoich")
 austraits_leaf_stoich <-
   read.csv("Inputs/austraits_leaf_stoichiometry_MASTER_for_phylogeny.csv")
 
-
 ##########---------V.PhyloMaker---------##########
 #species in austraits all in GBOTB?
 all(austraits_leaf_stoich$species_binom %in% tips.info$species) #FALSE
@@ -198,27 +197,38 @@ austraits_unique_corrected <- austraits_corrected %>%
   distinct(species, .keep_all = TRUE) #1415 species, not 1421 (probably due to synonyms)
 
 ##########---------austraits_leaf_stoich Data Tidying---------##########
+#from 02 Data Import
+library(here)
+library(tidyverse)
+all_data <- read_csv(
+  file = here('Inputs', 'AusStoich_merged_final.csv'),
+  na = c('', 'NA', '#N/A','uncertain'),
+  col_types = cols(
+    woodiness = col_factor(c('0', '1')),
+    reclass_life_history = col_factor(c('short', 'long')),
+    putative_BNF = col_factor(c('0', '1')),
+    myc_type = col_factor(c('AM', 'EcM', 'EcM-AM', 'ErM', 'NM', 'NM-AM'))
+  )
+)
 
-#name correction
-austraits_leaf_stoich <- austraits_raw_genus %>%
-  left_join(all_naming_corrections, by = c("species" = "species_before_correction",
-                                           "genus" = "genus_before_correction",
-                                           "family" = "family_before_correction")) %>%
+#LCVP name standardization - derivation in phylogeny script
+naming_corrections <- read_csv(here('Inputs', 'all_naming_corrections.csv'))
+
+all_corrected_data <- all_data %>%
+  left_join(naming_corrections, by = c("species_binom" = "species_before_correction",
+                                       "genus" = "genus_before_correction",
+                                       "family" = "family_before_correction")) %>%
   mutate(
-    species = ifelse(!is.na(species_after_correction), species_after_correction, species),
+    species_binom = ifelse(!is.na(species_after_correction), species_after_correction, species_binom),
     genus = ifelse(!is.na(genus_after_correction), genus_after_correction, genus),
     family = ifelse(!is.na(family_after_correction), family_after_correction, family)
   ) %>%
-  select(species, genus, family)
+  select(-species_after_correction, -genus_after_correction, -family_after_correction) 
 
-#outliers (nutrient outliers)
-
-
-#structure analysis
+#remove outliers from continuous traits as well as structure analysis
 
 
-
-##########---------austraits_all_pos_sp.tre---------##########
+##########---------austraits_all_pos_sp.tre derivation---------##########
 
 austraits_all_pos_sp_df <- read.csv("Inputs/all_pos_austraits_LCVP_sp.csv")
 
@@ -233,8 +243,27 @@ write.tree(austraits_all_pos_sp$scenario.3,
 austraits_all_pos_sp_tree<- read.tree("Inputs/austraits_all_pos_sp.tre")
 plot(austraits_all_pos_sp_tree, cex= 0.1) #this has all possible species in it
 
+
+##########---------austraits_all_pos_sp.tre plots---------##########
+library(ggtree)
+
 austraits_all_pos_sp_tree_tib <- as_tibble(austraits_all_pos_sp_tree)
-#use left join to join with nutrient data 
+#use left join to join with nutrient data
+#need to average this data first 
+#avg_nutrient_df <- aggregate(. ~ species_binom, data = nutrient_df, FUN = mean)
+#filtered_df <- austraits_leaf_stoich[austraits_leaf_stoich$species_binom %in%
+#ITS_tree_species, ]
+
+all_pos_sp_all_data <- all_corrected_data[all_corrected_data$species_binom %in%
+                                            austraits_all_pos_sp_df$species, ]
+
+length(unique(all_pos_sp_all_data$species_binom)) #828, not 829...
+
+
+p <- ggtree(austraits_all_pos_sp_tree) + geom_tiplab() + xlim_tree(0.1)
+plot(p)
+
+
 
 ##########---------austraits_one_rep_per_gen.tre & genera lost---------##########
 
