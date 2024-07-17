@@ -246,6 +246,8 @@ plot(austraits_all_pos_sp_tree, cex= 0.1) #this has all possible species in it
 
 ##########---------austraits_all_pos_sp.tre plots---------##########
 library(ggtree)
+library(tidytree)
+library(treeio)
 
 austraits_all_pos_sp_tree_tib <- as_tibble(austraits_all_pos_sp_tree)
 #use left join to join with nutrient data
@@ -254,20 +256,31 @@ austraits_all_pos_sp_tree_tib <- as_tibble(austraits_all_pos_sp_tree)
 #filtered_df <- austraits_leaf_stoich[austraits_leaf_stoich$species_binom %in%
 #ITS_tree_species, ]
 
+#start of all_pos_sp_all tib derivation
 all_pos_sp_all_data <- all_corrected_data[all_corrected_data$species_binom %in%
                                             austraits_all_pos_sp_df$species, ]
+length(unique(all_pos_sp_all_data$species_binom)) #829 so ok
 
-length(unique(all_pos_sp_all_data$species_binom)) #828, not 829...
-
+all_pos_sp_all_data <- all_pos_sp_all_data[,c("species_binom", "family", "genus",
+                      "woodiness", "reclass_life_history", "putative_BNF",
+                      "myc_type", "leaf_N_per_dry_mass", "leaf_P_per_dry_mass", 
+                      "leaf_C_per_dry_mass", "NP_ratio", "CN_ratio", "CP_ratio")]
+#end of all_pos_sp_all dataframe derivation
 
 p <- ggtree(austraits_all_pos_sp_tree) + geom_tiplab() + xlim_tree(0.1)
 plot(p)
 
+ggtree(austraits_all_pos_sp_tree,layout='circular')
+ggtree(austraits_all_pos_sp_tree, branch.length = "none",
+       layout = "circular") + geom_tiplab(size = 0.7) + ggtitle("All Possible Species in tips.info.LCVP")
+ggtree(austraits_all_pos_sp_tree, branch.length = "none",
+       layout = "circular") + geom_nodelab()
 
 
 ##########---------austraits_one_rep_per_gen.tre & genera lost---------##########
 
-#this tree will have one species representative per genus 
+#this tree will have one species representative per genus
+#note that this is only for those with species_resolution in tips.info.LCVP
 #431 total genera, so csv should have 431 - some number entries
 
 #set seed for reproducibility
@@ -301,6 +314,8 @@ write.tree(austraits_one_rep_per_gen$scenario.3,
 
 austraits_one_rep_per_gen_tree<- read.tree("Inputs/austraits_one_rep_per_gen.tre")
 plot(austraits_one_rep_per_gen_tree, cex= 0.1)
+ggtree(austraits_one_rep_per_gen_tree, branch.length = "none",
+       layout = "circular") + geom_tiplab(size = 3) + ggtitle("One Rep Per Genera in tips.info.LCVP")
 
 
 
