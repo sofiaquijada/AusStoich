@@ -11,7 +11,7 @@ setwd("/Users/sofiaquijada/Documents/McGill/2024 Soper Lab/AusStoich")
 
 #using separate csv file since V.Phylomaker has _ in their species names
 austraits_leaf_stoich <-
-  read.csv("Inputs/austraits_leaf_stoichiometry_MASTER_for_phylogeny.csv")
+  read.csv("Inputs/Supplemental Inputs - Sofia/austraits_leaf_stoichiometry_MASTER_for_phylogeny.csv")
 
 ##########---------V.PhyloMaker---------##########
 #species in austraits all in GBOTB?
@@ -230,7 +230,7 @@ all_corrected_data <- all_data %>%
 
 ##########---------austraits_all_pos_sp.tre derivation---------##########
 
-austraits_all_pos_sp_df <- read.csv("Inputs/all_pos_austraits_LCVP_sp.csv")
+austraits_all_pos_sp_df <- read.csv("Inputs/Supplemental Inputs - Sofia/all_pos_austraits_LCVP_sp.csv")
 
 austraits_all_pos_sp <- phylo.maker(sp.list = austraits_all_pos_sp_df,
                                            tree = GBOTB.extended.LCVP,
@@ -290,9 +290,9 @@ austraits_one_rep_per_gen_df <- austraits_all_pos_sp_df %>%
   slice_sample(n = 1) %>%
   ungroup()
 austraits_one_rep_per_gen_df <- data.frame(austraits_one_rep_per_gen_df) #not tibble
-#286 entries??? way too low... 
+#287 entries??? way too low... 
 
-#431 - 286 = 145
+#431 - 287 = 144 (used to be 145 but fixed ichnocarpus entry)
 
 gen_in_allposp_not_in_one_rep <- 
   austraits_all_pos_sp_df$genus[!(austraits_all_pos_sp_df$genus
@@ -310,9 +310,9 @@ austraits_one_rep_per_gen <- phylo.maker(sp.list = austraits_one_rep_per_gen_df,
                                     scenarios="S3")
 
 write.tree(austraits_one_rep_per_gen$scenario.3,
-           "Inputs/austraits_one_rep_per_gen.tre")
+           "Inputs/Trees/austraits_one_rep_per_gen.tre")
 
-austraits_one_rep_per_gen_tree<- read.tree("Inputs/austraits_one_rep_per_gen.tre")
+austraits_one_rep_per_gen_tree<- read.tree("Inputs/Trees/austraits_one_rep_per_gen.tre")
 plot(austraits_one_rep_per_gen_tree, cex= 0.1)
 ggtree(austraits_one_rep_per_gen_tree, branch.length = "none",
        layout = "circular") + geom_tiplab(size = 3) + ggtitle("One Rep Per Genera in tips.info.LCVP")
