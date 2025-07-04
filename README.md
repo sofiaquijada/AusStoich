@@ -1,2 +1,2 @@
-# AusStoich-Collab
-Collaborative R work for Soper Lab AusStoich project.
+# AusStoich
+Data Analysis for Soper Lab AusStoich project.
