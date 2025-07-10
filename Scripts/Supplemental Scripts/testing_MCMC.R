@@ -1,21 +1,9 @@
-# This script is intended for running exclusively on the lab computer, should be kept clean at all times. 
-# Repositories downloaded from Git as zip files, labelled with dates.
-# Git Connection Non-Existent on lab computer.
-# Eventually this script will be automated for all analyses.
-# DO NOT MODIFY THIS SCRIPT LOCALLY ON LAB COMPUTER!!!!
-
 # Script includes:
 # Data Import - aus_data + tree
 # Data cleaning
 # Model run through
 
-
-#Script should include:
-# Distributions of dependent
-# Feature selection
-# Diagnostic plots
-# Implementation of categorical
-# and more..
+#right now scrappy version of MCMCglmm
 
 library(ape)
 library(MCMCglmm)
@@ -75,3 +63,13 @@ summary(model)
 summary(model)$solutions
 plot(model$Sol)
 autocorr.plot(model$Sol)
+
+
+
+#------ if you want to plot one by one this is how
+#--plotting histograms of random effect
+par(mfrow = c(1,2)) #to set plot parameters
+#two plots for each random effect
+hist(mcmc(test$VCV)[,"phylo"])
+hist(mcmc(test$VCV)[,"species_binom"])
+#for random effect to be significant want it not to be pressed up agaisnt 0
