@@ -1,4 +1,5 @@
 library(ape)
+library(tidyverse)
 library(MCMCglmm)
 library(coda)
 library(ggtree)
@@ -69,7 +70,6 @@ ggplot(data = aus_data) +
 #MCMCglmm can't have any NAs in fixed predictors
 ausdata_all_pos_sp <- ausdata_all_pos_sp %>%
   filter(!is.na(myc_type) & !is.na(woodiness))
-#-------------------------------------------------------------------------------
 
 
 #variable selection ------------------------------------------------------------
@@ -88,13 +88,11 @@ cont_predictors <- cont_predictors[cont_predictors != "AET"]
 diag(solve(cor(env[cont_predictors])))
 #all VIFs below or marginally above 10 once AET removed
 aus_data$AET <- NULL
-#-------------------------------------------------------------------------------
 
 
 #MCMCglmm settings and priors---------------------------------------------------
 
 #inverse wishart prior for phylogeny
-#try nu = 1 instead of 1
 prior_phylo <- list(
   G = list(
     G1 = list(V = 1, nu = 1), #for phylo
@@ -108,11 +106,10 @@ Nnitt = 100000
 Nburnin = 1000
 Nthin = 10
 
-#-------------------------------------------------------------------------------
 
 
 #MCMCglmm ----------------------------------------------------------------------
-tic("test run")
+tic("chain1")
 #chains
 #first check burn in period (low number of iterations)
 chain1 <- MCMCglmm(ln_NP_ratio ~  SN_total_0_30 + SP_total_0_30 + SOC_total_0_30 +
@@ -125,6 +122,7 @@ chain1 <- MCMCglmm(ln_NP_ratio ~  SN_total_0_30 + SP_total_0_30 + SOC_total_0_30
                    ginverse = list(phylo = phylo_inv$Ainv), prior = prior_phylo,
                    data = ausdata_all_pos_sp, nitt = Nnitt, burnin = Nburnin, thin = Nthin)
 chain1_sol <- chain1$Sol
+toc()
 
 chain2 <- MCMCglmm(ln_NP_ratio ~  SN_total_0_30 + SP_total_0_30 + SOC_total_0_30 +
                      + CEC_total_0_30 + AP_total_0_30 +
@@ -159,9 +157,6 @@ write.csv(chain3_sol, file = "Results/chain3_sol.csv")
 saveRDS(chain1)
 saveRDS(chain2)
 saveRDS(chain3)
-
-#-------------------------------------------------------------------------------
-
 
 
 #model diagnostics -------------------------------------------------------------
@@ -205,4 +200,3 @@ gelman.diag(combined_chains) #does anova on different chains
 traceplot(combined_chains)
 autocorr.plot(chain1$Sol)
 autocorr.plot(chain1$VCV)
-#-------------------------------------------------------------------------------
