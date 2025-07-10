@@ -51,3 +51,7 @@ rsconnect/
 
 # VSCode files
 .vscode
+
+# Ignore directories with "data" in their name
+*/*Data/
+*/*Results/
