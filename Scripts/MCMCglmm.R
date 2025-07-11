@@ -102,16 +102,15 @@ prior_phylo <- list(
 )
 
 
-Nnitt = 100000
-Nburnin = 1000
-Nthin = 10
+Nnitt = 210000
+Nburnin = 20000
+Nthin = 50
 
 
 
 #MCMCglmm ----------------------------------------------------------------------
 tic("chain1")
 #chains
-#first check burn in period (low number of iterations)
 chain1 <- MCMCglmm(ln_NP_ratio ~  SN_total_0_30 + SP_total_0_30 + SOC_total_0_30 +
                      + CEC_total_0_30 + AP_total_0_30 +
                      + NPP + MAT + PPT +
@@ -123,6 +122,10 @@ chain1 <- MCMCglmm(ln_NP_ratio ~  SN_total_0_30 + SP_total_0_30 + SOC_total_0_30
                    data = ausdata_all_pos_sp, nitt = Nnitt, burnin = Nburnin, thin = Nthin)
 chain1_sol <- chain1$Sol
 toc()
+sink("Results/chain1_summary.txt")
+print(summary(chain1))
+sink()
+
 
 chain2 <- MCMCglmm(ln_NP_ratio ~  SN_total_0_30 + SP_total_0_30 + SOC_total_0_30 +
                      + CEC_total_0_30 + AP_total_0_30 +
@@ -134,7 +137,11 @@ chain2 <- MCMCglmm(ln_NP_ratio ~  SN_total_0_30 + SP_total_0_30 + SOC_total_0_30
                    ginverse = list(phylo = phylo_inv$Ainv), prior = prior_phylo,
                    data = ausdata_all_pos_sp, nitt = Nnitt, burnin = Nburnin, thin = Nthin)
 chain2_sol <- chain2$Sol
+sink("Results/chain2_summary.txt")
+print(summary(chain2))
+sink()
 
+tic("chain3")
 chain3 <- MCMCglmm(ln_NP_ratio ~  SN_total_0_30 + SP_total_0_30 + SOC_total_0_30 +
                      + CEC_total_0_30 + AP_total_0_30 +
                      + NPP + MAT + PPT +
@@ -145,6 +152,10 @@ chain3 <- MCMCglmm(ln_NP_ratio ~  SN_total_0_30 + SP_total_0_30 + SOC_total_0_30
                    ginverse = list(phylo = phylo_inv$Ainv), prior = prior_phylo,
                    data = ausdata_all_pos_sp, nitt = Nnitt, burnin = Nburnin, thin = Nthin)
 chain3_sol <- chain3$Sol
+sink("Results/chain3_summary.txt")
+print(summary(chain3))
+sink()
+
 
 combined_chains <- mcmc.list(chain1$Sol, chain2$Sol, chain3$Sol)
 
@@ -154,9 +165,9 @@ write.csv(chain1_sol, file = "Results/chain1_sol.csv")
 write.csv(chain2_sol, file = "Results/chain2_sol.csv")
 write.csv(chain3_sol, file = "Results/chain3_sol.csv")
 
-saveRDS(chain1)
-saveRDS(chain2)
-saveRDS(chain3)
+saveRDS(chain1, file = "Results/chain1.RDS")
+saveRDS(chain2, file = "Results/chain2.RDS")
+saveRDS(chain3, file = "Results/chain3.RDS")
 
 
 #model diagnostics -------------------------------------------------------------
@@ -172,7 +183,7 @@ plot_mcmc <- function(mcmc_obj){
 }
 
 plot_chains <- function(mcmc_chain){
-  a <- gelman.diag(mcmc_chain)
+  a <- gelman.plot(mcmc_chain)
   b <- plot(mcmc_chain)
   plot(a)
   plot(b)
@@ -184,9 +195,14 @@ plot_mcmc(chain3)
 
 plot_chains(combined_chains)
 
+sink("Results/gelman_diag.txt")
+print(gelman.diag(combined_chains))
+sink()
+
 #need MCMCclass
 BF <- BayesFactor(chain1, chain2)
 print(BF)
+
 
 #---- summary statistics
 summary(model)
@@ -200,3 +216,17 @@ gelman.diag(combined_chains) #does anova on different chains
 traceplot(combined_chains)
 autocorr.plot(chain1$Sol)
 autocorr.plot(chain1$VCV)
+
+
+#----coda diagnostics
+effectiveSize(chain1_sol) #can do this with VCV as well
+heidel.diag(chain1_sol)
+raftery.diag(chain1_sol)
+geweke.diag
+
+#suggested settings from diagnostics:
+needed_indep   <- 3746           #from Raftery
+k              <-  50            #proposed thinning
+post_burn_raw  <- needed_indep * k  # 3746 × 50  ≈ 1.9e5
+burnin         <- 2e4            # round up from Heidel start=1
+nitt           <- burnin + post_burn_raw  # ≈ 210000, add 10%
