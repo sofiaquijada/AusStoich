@@ -17,6 +17,9 @@ all_data <- read_csv(
 
 all_data <- all_data %>%
   mutate(
+    ln_leaf_N = log(leaf_N_per_dry_mass),
+    ln_leaf_P = log(leaf_P_per_dry_mass),
+    ln_leaf_C = log(leaf_C_per_dry_mass),
     ln_NP_ratio = log(NP_ratio),
     ln_CN_ratio = log(CN_ratio),
     ln_CP_ratio = log(CP_ratio)
@@ -28,7 +31,7 @@ all_data <- all_data %>%
   )
 
 # Add proportional variation metric for ratios
-all_data <- aus_data %>%
+all_data <- all_data %>%
   group_by(species_binom) %>%
   mutate(
     sd_N = sd(leaf_N_per_dry_mass, na.rm = TRUE),
@@ -63,7 +66,7 @@ all_corrected_data <- all_data %>%
   select(-species_after_correction, -genus_after_correction, -family_after_correction)
 
 # Add myc_type assignment post naming correction
-aus_data <- aus_data %>%
+all_data <- all_data %>%
   mutate(
     myc_type = as.character(myc_type), 
     myc_type = case_when(
@@ -94,4 +97,4 @@ aus_data <- outliers_removed_data |> relocate(species_binom, .before = woodiness
 rm(all_data, outliers, naming_corrections, all_corrected_data, outliers_removed_data)
 
 #write csv to run remotely
-#write.csv(aus_data, file = "Data/aus_data.csv")
+#write.csv(aus_data, file = "Remote/Data/aus_data.csv")
