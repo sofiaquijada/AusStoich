@@ -90,7 +90,8 @@ diag(solve(cor(env[cont_predictors])))
 aus_data$AET <- NULL
 
 
-#MCMCglmm settings and priors---------------------------------------------------
+#MCMCglmm-----------=-----------------------------------------------------------
+
 
 #inverse wishart prior for phylogeny
 prior_phylo <- list(
@@ -106,69 +107,68 @@ Nnitt = 210000
 Nburnin = 20000
 Nthin = 50
 
+#specify path and trait choice
+filepath <- "/Users/sofiaquijada/Desktop/attempt"
+response <- "ln_NP_ratio"
 
 
-#MCMCglmm ----------------------------------------------------------------------
-tic("chain1")
-#chains
-chain1 <- MCMCglmm(ln_NP_ratio ~  SN_total_0_30 + SP_total_0_30 + SOC_total_0_30 +
-                     + CEC_total_0_30 + AP_total_0_30 +
-                     + NPP + MAT + PPT +
-                     + precipitation_seasonality + temp_seasonality +
-                     + reclass_life_history + putative_BNF + myc_type + woodiness,
-                   random = ~ phylo +species_binom,
-                   family = "gaussian",
-                   ginverse = list(phylo = phylo_inv$Ainv), prior = prior_phylo,
-                   data = ausdata_all_pos_sp, nitt = Nnitt, burnin = Nburnin, thin = Nthin)
-chain1_sol <- chain1$Sol
-toc()
-sink("Results/chain1_summary.txt")
-print(summary(chain1))
-sink()
-
-
-chain2 <- MCMCglmm(ln_NP_ratio ~  SN_total_0_30 + SP_total_0_30 + SOC_total_0_30 +
-                     + CEC_total_0_30 + AP_total_0_30 +
-                     + NPP + MAT + PPT +
-                     + precipitation_seasonality + temp_seasonality +
-                     + reclass_life_history + putative_BNF + myc_type + woodiness,
-                   random = ~ phylo +species_binom,
-                   family = "gaussian",
-                   ginverse = list(phylo = phylo_inv$Ainv), prior = prior_phylo,
-                   data = ausdata_all_pos_sp, nitt = Nnitt, burnin = Nburnin, thin = Nthin)
-chain2_sol <- chain2$Sol
-sink("Results/chain2_summary.txt")
-print(summary(chain2))
-sink()
-
-tic("chain3")
-chain3 <- MCMCglmm(ln_NP_ratio ~  SN_total_0_30 + SP_total_0_30 + SOC_total_0_30 +
-                     + CEC_total_0_30 + AP_total_0_30 +
-                     + NPP + MAT + PPT +
-                     + precipitation_seasonality + temp_seasonality +
-                     + reclass_life_history + putative_BNF + myc_type + woodiness,
-                   random = ~ phylo +species_binom,
-                   family = "gaussian",
-                   ginverse = list(phylo = phylo_inv$Ainv), prior = prior_phylo,
-                   data = ausdata_all_pos_sp, nitt = Nnitt, burnin = Nburnin, thin = Nthin)
-chain3_sol <- chain3$Sol
-sink("Results/chain3_summary.txt")
-print(summary(chain3))
-sink()
-
-
-combined_chains <- mcmc.list(chain1$Sol, chain2$Sol, chain3$Sol)
-
-
-#save model outputs: raw and summary
-write.csv(chain1_sol, file = "Results/chain1_sol.csv")
-write.csv(chain2_sol, file = "Results/chain2_sol.csv")
-write.csv(chain3_sol, file = "Results/chain3_sol.csv")
-
-saveRDS(chain1, file = "Results/chain1.RDS")
-saveRDS(chain2, file = "Results/chain2.RDS")
-saveRDS(chain3, file = "Results/chain3.RDS")
-
+#following loop will run three chains for desired trait + outputs & diagnostics
+for (i in 1:3) {
+  
+  count = 0
+  
+  model_formula <- as.formula(
+    paste0(response, " ~ SN_total_0_30 + SP_total_0_30 + SOC_total_0_30 + ",
+           "CEC_total_0_30 + AP_total_0_30 + NPP + MAT + PPT + ",
+           "precipitation_seasonality + temp_seasonality + ",
+           "reclass_life_history + putative_BNF + myc_type + woodiness")
+  )
+  
+  chain <- MCMCglmm(
+    model_formula,
+    random = ~ phylo + species_binom,
+    family = "gaussian",
+    ginverse = list(phylo = phylo_inv$Ainv),
+    prior = prior_phylo,
+    data = ausdata_all_pos_sp,
+    nitt = Nnitt, burnin = Nburnin, thin = Nburnin
+  )
+  
+  #save text summary for ease of access
+  sink(file.path(filepath, paste0(response, "_chain", i, "_summary.txt")))
+  print(summary(chain))
+  sink()
+  
+  #save variance partitioning
+  sink(file.path(filepath, paste0(response, "_chain", i, "_varpart.txt")))
+  print(get_info(chain))
+  sink()
+  
+  #save chain solutions and model
+  saveRDS(chain, file = file.path(filepath, paste0(response, "_chain", i, ".RDS")))
+  write.csv(chain$Sol, file = file.path(filepath, paste0(response, "_chain", i, "_Sol.csv")))
+  write.csv(chain$VCV, file = file.path(filepath, paste0(response, "_chain", i, "_VCV.csv")))
+  
+  #store chain
+  assign(paste0("chain", i), chain)
+  
+  count = 0 + i
+  
+  #once 3 chains have run, create combined chain object
+  if (count == 3){
+    combined_chains_sol <- mcmc.list(chain1$Sol, chain2$Sol, chain3$Sol)
+    combined_chains_VCV <- mcmc.list(chain1$VCV, chain2$VCV, chain3$VCV)
+    
+    sink(file.path(filepath, paste0(response, "_gelman.diag_sol.txt")))
+    print(gelman.diag(combined_chains_sol))
+    sink()
+    
+    sink(file.path(filepath, paste0(response, "_gelman_diag_VCV.txt")))
+    print(gelman.diag(combined_chains_VCV))
+    sink()
+  }
+}
+  
 
 #model diagnostics -------------------------------------------------------------
 
@@ -195,21 +195,14 @@ plot_mcmc(chain3)
 
 plot_chains(combined_chains)
 
-sink("Results/gelman_diag.txt")
-print(gelman.diag(combined_chains))
-sink()
 
-#need MCMCclass
-BF <- BayesFactor(chain1, chain2)
-print(BF)
-
-
-#---- summary statistics
+#---- summary statistics examples
 summary(model)
 summary(model)$solutions
 plot(model$Sol) #fixed effects
 plot(model$VCV) #random effects
 autocorr.plot(model$Sol)
+autocorr.plot(model$VCV)
 
 # Check convergence
 gelman.diag(combined_chains) #does anova on different chains
@@ -223,10 +216,3 @@ effectiveSize(chain1_sol) #can do this with VCV as well
 heidel.diag(chain1_sol)
 raftery.diag(chain1_sol)
 geweke.diag
-
-#suggested settings from diagnostics:
-needed_indep   <- 3746           #from Raftery
-k              <-  50            #proposed thinning
-post_burn_raw  <- needed_indep * k  # 3746 × 50  ≈ 1.9e5
-burnin         <- 2e4            # round up from Heidel start=1
-nitt           <- burnin + post_burn_raw  # ≈ 210000, add 10%
