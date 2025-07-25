@@ -10,6 +10,9 @@ library(corrplot)
 
 #data import -------------------------------------------------------------------
 
+#set working directory as needed
+setwd("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich/Remote")
+
 #--read in trait data
 aus_data <- read_csv("Data/aus_data.csv")
 
@@ -64,7 +67,7 @@ ausdata_all_pos_sp <- as.data.frame(ausdata_all_pos_sp)
 
 #trait distributions to check normality assumption
 ggplot(data = aus_data) +
-  geom_histogram(mapping = aes(x = log(leaf_C_per_dry_mass))) +
+  geom_histogram(mapping = aes(x = log(leaf_P_per_dry_mass))) +
   theme_minimal()
 
 #MCMCglmm can't have any NAs in fixed predictors
@@ -107,9 +110,11 @@ Nnitt = 210000
 Nburnin = 20000
 Nthin = 50
 
+
 #specify path and trait choice
-filepath <- "/Users/sofiaquijada/Desktop/attempt"
-response <- "ln_NP_ratio"
+setwd("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich")
+filepath <- "Results/local/Attempt 2"
+response <- "ln_leaf_P"
 
 
 #following loop will run three chains for desired trait + outputs & diagnostics
@@ -131,7 +136,7 @@ for (i in 1:3) {
     ginverse = list(phylo = phylo_inv$Ainv),
     prior = prior_phylo,
     data = ausdata_all_pos_sp,
-    nitt = Nnitt, burnin = Nburnin, thin = Nburnin
+    nitt = Nnitt, burnin = Nburnin, thin = Nthin
   )
   
   #save text summary for ease of access
@@ -168,7 +173,8 @@ for (i in 1:3) {
     sink()
   }
 }
-  
+
+
 
 #model diagnostics -------------------------------------------------------------
 
