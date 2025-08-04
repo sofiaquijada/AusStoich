@@ -91,6 +91,7 @@ cont_predictors <- cont_predictors[cont_predictors != "AET"]
 diag(solve(cor(env[cont_predictors])))
 #all VIFs below or marginally above 10 once AET removed
 aus_data$AET <- NULL
+ausdata_all_pos_sp$AET <- NULL
 
 
 #MCMCglmm-----------=-----------------------------------------------------------
@@ -113,14 +114,12 @@ Nthin = 50
 
 #specify path and trait choice
 setwd("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich")
-filepath <- "Results/local/Attempt 2"
-response <- "ln_leaf_P"
+filepath <- "Results/GIC white/Attempt 2 NP ratio"
+response <- "ln_NP_ratio"
 
 
 #following loop will run three chains for desired trait + outputs & diagnostics
 for (i in 1:3) {
-  
-  count = 0
   
   model_formula <- as.formula(
     paste0(response, " ~ SN_total_0_30 + SP_total_0_30 + SOC_total_0_30 + ",
@@ -144,6 +143,12 @@ for (i in 1:3) {
   print(summary(chain))
   sink()
   
+  #save chain diagnostics
+  sink(file.path(filepath, paste0(response, "_chain", i, "_heidel.txt")))
+  print(heidel.diag(chain$Sol))
+  print(heidel.diag(chain$VCV))
+  sink()
+  
   #save variance partitioning
   sink(file.path(filepath, paste0(response, "_chain", i, "_varpart.txt")))
   print(get_info(chain))
@@ -160,6 +165,7 @@ for (i in 1:3) {
   count = 0 + i
   
   #once 3 chains have run, create combined chain object
+  #save gelman.diag + HPD intervals
   if (count == 3){
     combined_chains_sol <- mcmc.list(chain1$Sol, chain2$Sol, chain3$Sol)
     combined_chains_VCV <- mcmc.list(chain1$VCV, chain2$VCV, chain3$VCV)
@@ -171,9 +177,37 @@ for (i in 1:3) {
     sink(file.path(filepath, paste0(response, "_gelman_diag_VCV.txt")))
     print(gelman.diag(combined_chains_VCV))
     sink()
+    
+    sink(file.path(filepath, paste0(response, "HPD_interval_sol.txt")))
+    print(HPDinterval(combined_chains_sol))
+    sink()
+    
+    sink(file.path(filepath, paste0(response, "HPD_interval_VCV.txt")))
+    print(HPDinterval(combined_chains_VCV))
+    sink()
   }
 }
 
+
+
+#model check -------------------------------------------------------------------
+
+
+# Get posterior predictive means of the data
+# If you know some linear algebra, you can see the this
+# is like fitting each point to the average value of your
+# posterior distribution for each parameter.
+predicted <- chain1$X %*% colMeans(chain1$Sol)
+
+# The residuals are simply the observed values minus
+# the predicted values
+residuals <- ausdata_all_pos_sp$ln_NP_ratio - predicted
+
+# Plot residuals vs fitted values
+# too small of a deviance from the observed values
+# are indicative of overfitting.
+plot(predicted, residuals)
+abline(h = 0, lty = 2)
 
 
 #model diagnostics -------------------------------------------------------------
@@ -199,7 +233,36 @@ plot_mcmc(chain1)
 plot_mcmc(chain2)
 plot_mcmc(chain3)
 
-plot_chains(combined_chains)
+#code to get gelman.diag stats for those whose RDS wasn't saved properly:
+#properly use as.mcmc for this
+
+#some csv's saved rownames as column "1", remove if needed
+chain1_sol <- subset(chain1_sol, select = -c(1))
+chain2_sol <- subset(chain2_sol, select = -c(1))
+chain3_sol <- subset(chain3_sol, select = -c(1))
+
+#turn into mcmc objects
+sol1 <- as.mcmc(x =  chain1_sol, start = 1, end = 3800, thin = 50)
+sol2 <- as.mcmc(x =  chain2_sol, start = 1, end = 3800, thin = 50)
+sol3 <- as.mcmc(x =  chain3_sol, start = 1, end = 3800, thin = 50)
+
+chain1_VCV <- subset(chain1_VCV, select = -c(1))
+chain2_VCV <- subset(chain2_VCV, select = -c(1))
+chain3_VCV <- subset(chain3_VCV, select = -c(1))
+
+VCV1 <- as.mcmc(x =  chain1_VCV, start = 1, end = 3800, thin = 50)
+VCV2 <- as.mcmc(x =  chain2_VCV, start = 1, end = 3800, thin = 50)
+VCV3 <- as.mcmc(x =  chain3_VCV, start = 1, end = 3800, thin = 50)
+
+combined_chain_sol <- mcmc.list(sol1, sol2, sol3)
+combined_chain_VCV <- mcmc.list(VCV1, VCV2, VCV3)
+
+gelman.plot(combined_chain_VCV)
+gelman.plot(combined_chain_sol)
+
+#calculate HPD intervals
+HPDinterval(combined_chain_sol)
+HPDinterval(combined_chain_VCV)
 
 
 #---- summary statistics examples
