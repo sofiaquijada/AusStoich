@@ -16,9 +16,13 @@ get_info <- function(mod, prec = 4)
   # Calculate the predicted values for each observation and each MCMC iteration
   # These are the predicted values across MCMC samples
   # xbeta = bayesian analog to theta hat in conventional statistics
+  
+  #multiply fixed design matrix with transposed model solutions
+  # = fitted values at each iteration for fixed effects
   Xbeta <- mod$X %*% t(mod$Sol)
   
   # You can get the fixed component of variance from these values 
+  # variance in fitted values across observations 
   var_fixed <- apply(Xbeta, 2, var)
   
   # Get the total variance, this is defined as the sum of all the components

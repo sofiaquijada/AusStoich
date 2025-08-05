@@ -192,24 +192,27 @@ for (i in 1:3) {
 
 #model check -------------------------------------------------------------------
 
+plot_residuals <- function(model, response, model_name = "") {
+  # Get posterior predictive means of the data
+  # If you know some linear algebra, you can see the this
+  # is like fitting each point to the average value of your
+  # posterior distribution for each parameter.
+  predicted <- model$X %*% colMeans(model$Sol)
+  
+  # The residuals are simply the observed values minus
+  # the predicted values
+  residuals <- response - predicted
+  
+  # Plot residuals vs fitted values
+  # too small of a deviance from the observed values
+  # are indicative of overfitting.
+  plot(predicted, residuals,
+       main = paste("Residuals", model_name),
+      )
+  abline(h = 0, lty = 2, col = "grey40")
+}
 
-# Get posterior predictive means of the data
-# If you know some linear algebra, you can see the this
-# is like fitting each point to the average value of your
-# posterior distribution for each parameter.
-predicted <- chain1$X %*% colMeans(chain1$Sol)
-
-# The residuals are simply the observed values minus
-# the predicted values
-residuals <- ausdata_all_pos_sp$ln_NP_ratio - predicted
-
-# Plot residuals vs fitted values
-# too small of a deviance from the observed values
-# are indicative of overfitting.
-plot(predicted, residuals)
-abline(h = 0, lty = 2)
-
-
+plot_residuals(chain3, ausdata_all_pos_sp$ln_CN_ratio, "CN")
 #model diagnostics -------------------------------------------------------------
 
 plot_mcmc <- function(mcmc_obj){
@@ -264,6 +267,24 @@ gelman.plot(combined_chain_sol)
 HPDinterval(combined_chain_sol)
 HPDinterval(combined_chain_VCV)
 
+
+
+#plots for pre-existing model objects:
+
+combined_chains_sol <- mcmc.list(chain1$Sol, chain2$Sol, chain3$Sol)
+combined_chains_VCV <- mcmc.list(chain1$VCV, chain2$VCV, chain3$VCV)
+
+autocorr.plot(combined_chains_sol)
+autocorr.plot(combined_chains_VCV)
+
+geweke.plot(combined_chains_sol)
+geweke.plot(combined_chains_VCV)
+
+heidel.diag(combined_chains_sol)
+heidel.diag(combined_chains_VCV)
+
+gelman.plot(combined_chains_VCV)
+gelman.plot(combined_chains_sol)
 
 #---- summary statistics examples
 summary(model)
