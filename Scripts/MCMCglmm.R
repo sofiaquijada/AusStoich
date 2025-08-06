@@ -29,18 +29,22 @@ aus_data[cont_predictors] <- scale(aus_data[cont_predictors])
 
 #--read in tree data
 ausdata_all_pos_sp_tree <- read.tree("Data/ausdata_all_pos_sp.tre")
+ausdata_tree <- read.tree("Data/ausdata.tre")
 
 #sanity check, inverseA requires ultrametric trees
 is.ultrametric(ausdata_all_pos_sp_tree) #TRUE
+is.ultrametric(ausdata_tree) #TRUE
 
 #look at node labels
 table(ausdata_all_pos_sp_tree$node.label)
+table(ausdata_tree$node.label)
 #remove internal node labels ""
 ausdata_all_pos_sp_tree$node.label <- NULL 
+ausdata_tree$node.label <- NULL 
 
 #inverted phylogenetic covariance matrix
-phylo_inv <- inverseA(ausdata_all_pos_sp_tree, nodes ="TIPS",scale=TRUE)
-#may compare results with inverse matrix using nodes = ALL later
+phyloinv_allpos <- inverseA(ausdata_all_pos_sp_tree, nodes ="TIPS",scale=TRUE) #tree with complete resolution
+phyloinv_complete <- inverseA(ausdata_tree, nodes ="TIPS",scale=TRUE) #tree with some uncertain nodes
 
 
 #--prep for MCMCglmm
@@ -48,30 +52,38 @@ phylo_inv <- inverseA(ausdata_all_pos_sp_tree, nodes ="TIPS",scale=TRUE)
 aus_data$phylo <- aus_data$species_binom
 
 #prune aus_data to include exclusively species in tree of choice
+#necessary step for tree with complete resolution
 ausdata_all_pos_sp <- aus_data %>% 
   filter(species_binom %in% ausdata_all_pos_sp_tree$tip.label)
+#for uncertain tree, aus_data object as is will suffice
 
 #ensure columns are factors
 ausdata_all_pos_sp$phylo <- factor(ausdata_all_pos_sp$phylo)
 ausdata_all_pos_sp$species_binom <- factor(ausdata_all_pos_sp$species_binom)
+
+aus_data$phylo <- factor(aus_data$phylo)
+aus_data$species_binom <- factor(aus_data$species_binom)
 
 #family column causes issues
 ausdata_all_pos_sp <- ausdata_all_pos_sp %>%
   rename(fam = family)
 ausdata_all_pos_sp$family <- NULL
 
+aus_data <- aus_data %>% rename(fam = family)
+aus_data$family <- NULL 
+
 #MCMCglmm requires dataframe
 #or else will say: some levels of phylo do not have a row entry in ginverse
-all(levels(ausdata_all_pos_sp$phylo) %in% rownames(phylo_inv$Ainv)) #TRUE
-ausdata_all_pos_sp <- as.data.frame(ausdata_all_pos_sp)
+all(levels(ausdata_all_pos_sp$phylo) %in% rownames(phyloinv_allpos$Ainv)) #TRUE
+all(levels(aus_data$phylo) %in% rownames(phyloinv_complete$Ainv)) #TRUE
 
-#trait distributions to check normality assumption
-ggplot(data = aus_data) +
-  geom_histogram(mapping = aes(x = log(leaf_P_per_dry_mass))) +
-  theme_minimal()
+ausdata_all_pos_sp <- as.data.frame(ausdata_all_pos_sp)
+aus_data<- as.data.frame(aus_data)
 
 #MCMCglmm can't have any NAs in fixed predictors
 ausdata_all_pos_sp <- ausdata_all_pos_sp %>%
+  filter(!is.na(myc_type) & !is.na(woodiness))
+aus_data <- aus_data %>%
   filter(!is.na(myc_type) & !is.na(woodiness))
 
 
@@ -90,9 +102,13 @@ env$AET <- NULL
 cont_predictors <- cont_predictors[cont_predictors != "AET"]
 diag(solve(cor(env[cont_predictors])))
 #all VIFs below or marginally above 10 once AET removed
-aus_data$AET <- NULL
 ausdata_all_pos_sp$AET <- NULL
+aus_data$AET <- NULL
 
+#trait distributions to check normality assumption
+ggplot(data = aus_data) +
+  geom_histogram(mapping = aes(x = (ln_CP_ratio))) +
+  theme_minimal()
 
 #MCMCglmm-----------=-----------------------------------------------------------
 
@@ -188,6 +204,92 @@ for (i in 1:3) {
   }
 }
 
+#following loop will run analyses for all traits + outputs and diagnostics ---
+traits <- c("ln_NP_ratio", "ln_CN_ratio", "ln_CP_ratio",
+            "ln_leaf_N", "ln_leaf_P", "leaf_C_per_dry_mass")
+
+setwd("")
+basepath <- "Results/Complete Tree/"
+
+for (response in traits) {
+  
+  #create output folder
+  filepath <- file.path(base_path, response)
+  dir.create(filepath, recursive = TRUE, showWarnings = FALSE)
+  
+  #remove potential leftover chains
+  rm(list = c("chain1", "chain2", "chain3", "chain"), envir = .GlobalEnv)
+  
+  for (i in 1:3) {
+    
+    model_formula <- as.formula(
+      paste0(response, " ~ SN_total_0_30 + SP_total_0_30 + SOC_total_0_30 + ",
+             "CEC_total_0_30 + AP_total_0_30 + NPP + MAT + PPT + ",
+             "precipitation_seasonality + temp_seasonality + ",
+             "reclass_life_history + putative_BNF + myc_type + woodiness")
+    )
+    
+    chain <- MCMCglmm(
+      model_formula,
+      random = ~ phylo + species_binom,
+      family = "gaussian",
+      ginverse = list(phylo = phylo_inv$Ainv),
+      prior = prior_phylo,
+      data = ausdata_all_pos_sp,
+      nitt = Nnitt, burnin = Nburnin, thin = Nthin
+    )
+    
+    #save text summary for ease of access
+    sink(file.path(filepath, paste0(response, "_chain", i, "_summary.txt")))
+    print(summary(chain))
+    sink()
+    
+    #save chain diagnostics
+    sink(file.path(filepath, paste0(response, "_chain", i, "_heidel.txt")))
+    print(heidel.diag(chain$Sol))
+    print(heidel.diag(chain$VCV))
+    sink()
+    
+    #save variance partitioning
+    sink(file.path(filepath, paste0(response, "_chain", i, "_varpart.txt")))
+    print(get_info(chain))
+    sink()
+    
+    #save chain solutions and model
+    #opt out of saving model RDS, too heavy
+    #saveRDS(chain, file = file.path(filepath, paste0(response, "_chain", i, ".RDS")))
+    write.csv(chain$Sol, file = file.path(filepath, paste0(response, "_chain", i, "_Sol.csv")))
+    write.csv(chain$VCV, file = file.path(filepath, paste0(response, "_chain", i, "_VCV.csv")))
+    
+    #store chain
+    assign(paste0("chain", i), chain)
+    
+    #once 3 chains have run, create combined chain object
+    #save gelman.diag + HPD intervals
+    if (count == 3){
+      combined_chains_sol <- mcmc.list(chain1$Sol, chain2$Sol, chain3$Sol)
+      combined_chains_VCV <- mcmc.list(chain1$VCV, chain2$VCV, chain3$VCV)
+      
+      sink(file.path(filepath, paste0(response, "_gelman.diag_sol.txt")))
+      print(gelman.diag(combined_chains_sol))
+      sink()
+      
+      sink(file.path(filepath, paste0(response, "_gelman_diag_VCV.txt")))
+      print(gelman.diag(combined_chains_VCV))
+      sink()
+      
+      sink(file.path(filepath, paste0(response, "HPD_interval_sol.txt")))
+      print(HPDinterval(combined_chains_sol))
+      sink()
+      
+      sink(file.path(filepath, paste0(response, "HPD_interval_VCV.txt")))
+      print(HPDinterval(combined_chains_VCV))
+      sink()
+    }
+    rm(chain1, chain2, chain3, chain)
+    gc() #garbage collection
+  }
+}
 
 
 #model check -------------------------------------------------------------------
@@ -212,7 +314,7 @@ plot_residuals <- function(model, response, model_name = "") {
   abline(h = 0, lty = 2, col = "grey40")
 }
 
-plot_residuals(chain3, ausdata_all_pos_sp$ln_CN_ratio, "CN")
+plot_residuals(chain1, ausdata_all_pos_sp$ln_leaf_N, "leaf N")
 #model diagnostics -------------------------------------------------------------
 
 plot_mcmc <- function(mcmc_obj){
@@ -268,8 +370,7 @@ HPDinterval(combined_chain_sol)
 HPDinterval(combined_chain_VCV)
 
 
-
-#plots for pre-existing model objects:
+#--plots for pre-existing model objects:
 
 combined_chains_sol <- mcmc.list(chain1$Sol, chain2$Sol, chain3$Sol)
 combined_chains_VCV <- mcmc.list(chain1$VCV, chain2$VCV, chain3$VCV)
@@ -285,6 +386,8 @@ heidel.diag(combined_chains_VCV)
 
 gelman.plot(combined_chains_VCV)
 gelman.plot(combined_chains_sol)
+gelman.diag(combined_chains_VCV)
+gelman.diag(combined_chains_sol)
 
 #---- summary statistics examples
 summary(model)

@@ -1,6 +1,7 @@
 library(MCMCglmm)
 library(ggplot2)
 library(dplyr)
+library(coda)
 
 plot_estimates <- function(model, model_name = "") {
   #extract fixed effects summary
