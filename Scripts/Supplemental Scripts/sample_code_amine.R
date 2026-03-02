@@ -67,6 +67,28 @@ plot(varpart(Y, X, W))
 
 
 
+#---------colinearity between categorical and continuous variables
+library(vegan) 
+data(mite.env)
+X = model.matrix(~., data=mite.env)[,-1]
+diag(solve( cor(X)))
+
+x<- rnorm(1000)
+y<- rnorm(1000)
+diag(solve( cor(cbind(x, y) ) ) ) #1
+
+
+x <- rnorm(1000)
+y <- x +  rnorm(1000, 0, 0.0000001)
+diag(solve(cor(cbind(x,y)))) #huge bc y is essentially same thing as x
+
+
+x <- rnorm(1000)
+y<- rnorm(1000)
+z <- rnorm(10000)
+diag(solve(cor(cbind(x,y, z))))
+#set z as LC of X and Y , if you remove z then x and y will be back to 1
+
 
 #-- MCMC tutorial
 # For riwish function, you need
@@ -81,11 +103,22 @@ library(ellipse)
 
 # nu (v): degrees of freedom, needs to be > dim(Psi) or R will throw a fit
 # for weak prior, v will be similar to number of species
+# v is measure of confidence in Psi/tree
 # Psi (S): Scale matrix, can be anything so long as it is positive semidefinite
 # positive semidefinite = eigenvalues non negative (0 or positive)
 # for weak prior, psi will be similar to identity matrix (i.e. star tree)
-nu <- 5 + 0.001
+nu <- 10 +  0.002
 Psi <- matrix(c(1, 0.01, 0.01, 1), nrow=2, ncol=2)
+
+
+prior_phylo <- list(
+  G = list(
+    G1 = list(V = 1, nu = 1), #for phylo
+    G2 = list(V = 1, nu = 1)  #for species
+  ),
+  R = list(V = 1, nu = 1) #residual 
+)
+
 
 # Sample 100 covariance matrices from the parametrized Inverse Wishart distribution
 n_samples <- 100
@@ -112,8 +145,11 @@ for(i in 1:20){
 # Add grid for ... prettiness
 grid()
 
+#"anything can happen" = big ellipses
 #mess with parameters: covariance ellipses 
 #can be big and different each time they're plotted 
+#small and certain
+
 
 #sample for generating matrices with every possible combination
 expand.grid()
@@ -124,8 +160,7 @@ expand.grid(x = 1:3, y = 20:21)
 
 
 #lost code where we looked at phylogenies with generated data
-#according to lambda
-#didnt find :(
+#in var part script
 
 
 #biogeom tree niche hypothesis paper

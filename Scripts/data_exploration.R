@@ -46,7 +46,7 @@ ggplot() +
 ggplot() +
   australia_map +
   geom_point(data = aus_data, aes(x = long_deg, y = lat_deg,
-                                  color = putative_BNF)) +
+                                  color = woodiness)) +
   theme_minimal()
 
 #env variables on map
@@ -102,6 +102,226 @@ X <- cbind(rnorm(100), 1:100, 1:100+rnorm(100)); diag(solve(cor(X)))
 cor(env)
 library(corrplot)
 corrplot(cor(env))
+
+#--------------------------Intraspecific Variation------------------------------
+
+ggplot(data = aus_data, mapping = aes(x = sd_ln_NP)) +
+  geom_histogram() +
+  theme_minimal() +
+  ggplot(data = aus_data, mapping = aes(x = sd_ln_CN)) +
+  geom_histogram() +
+  theme_minimal() +
+  ggplot(data = aus_data, mapping = aes(x = sd_ln_CP)) +
+  geom_histogram() +
+  theme_minimal()
+
+
+ggplot(aus_data, aes(x = fct_reorder(species_binom, leaf_N_per_dry_mass,
+                                     .fun = mean, .desc = TRUE, .na_rm = TRUE), 
+                     y = leaf_N_per_dry_mass)) +
+  geom_boxplot()
+
+ggplot(aus_data %>% drop_na(scale(leaf_N_per_dry_mass)), 
+       aes(x = fct_reorder(species_binom, leaf_N_per_dry_mass, .fun = mean, .desc = TRUE),
+           y = leaf_N_per_dry_mass)) +
+  geom_boxplot() +
+  ggplot(aus_data %>% drop_na(scale(leaf_P_per_dry_mass)), 
+         aes(x = fct_reorder(species_binom, leaf_P_per_dry_mass, .fun = mean, .desc = TRUE),
+             y = leaf_P_per_dry_mass)) +
+  geom_boxplot() +
+  ggplot(aus_data %>% drop_na(scale(leaf_C_per_dry_mass)), 
+         aes(x = fct_reorder(species_binom, leaf_C_per_dry_mass, .fun = mean, .desc = TRUE),
+             y = leaf_C_per_dry_mass)) +
+  geom_boxplot()
+
+#want to also plot sample size
+#select taxonomical levels and nutrient columns only
+
+
+scaled_raw <- aus_data %>%
+  select(species_binom, genus, family,
+         leaf_N_per_dry_mass, leaf_P_per_dry_mass, leaf_C_per_dry_mass) %>%
+  pivot_longer(cols = c(leaf_N_per_dry_mass, leaf_P_per_dry_mass, leaf_C_per_dry_mass),
+               names_to = "trait", values_to = "value") %>%
+  drop_na(value) %>%
+  #important note: scaled by trait, not across all traits
+  group_by(trait) %>%
+  mutate(scaled_value = as.numeric(scale(value))) %>%
+  ungroup()
+  
+#correct plot by family for raw leaf nutrients
+#some missing data in certain families highlighted 
+scaled_raw %>%
+  ggplot(aes(
+    x = reorder_within(family, scaled_value, trait, fun = mean),
+    y = scaled_value
+  )) +
+  geom_boxplot(outlier.size = 0.5) +
+  facet_wrap(~ trait, scales = "free_y", ncol = 1) +
+  scale_x_reordered() +
+  theme_bw() +
+  labs(
+    x = "Family",
+    y = "Scaled Trait Value",
+    title = "Scaled Trait Variation by Family (ordered within each trait)"
+  )
+
+
+#attempt at frequency
+scaled_raw_counts <- scaled_raw %>%
+  group_by(family) %>%
+  mutate(freq = n()) %>%
+  ungroup()
+
+# plot with families on the x-axis, ordered by frequency
+#so high numbers of observations on left, low number of observation on right
+#this is to answer question: are more flexible sp/fam/gen just have more observations?
+scaled_raw_counts %>%
+  ggplot(aes(
+    x = fct_reorder(family, freq, .desc = TRUE),  # families ordered high → low freq
+    y = scaled_value
+  )) +
+  geom_boxplot(outlier.size = 0.5) +
+  facet_wrap(~ trait, scales = "free_y", ncol = 1) +
+  theme_bw() +
+  labs(
+    x = "Family (ordered by frequency)",
+    y = "Scaled Trait Value",
+    title = "Scaled Trait Variation by Species (families ordered by number of observations)"
+  ) 
+
+
+#here it is in a function:
+library(tidytext)
+
+plot_scaled_traits <- function(data, traits, group_var = c("family", "genus", "species_binom")) {
+  #input data, trait list, and taxonomic grouping variable
+  group_var <- rlang::sym(match.arg(group_var))
+  
+  # reshape + scale within each trait
+  scaled_df <- data %>%
+    select(species_binom, genus, family, all_of(traits)) %>%
+    pivot_longer(cols = all_of(traits), names_to = "trait", values_to = "value") %>%
+    drop_na(value) %>%
+    group_by(trait) %>%
+    mutate(scaled_value = as.numeric(scale(value))) %>%
+    ungroup()
+  
+  #plot 1 - ordered by increasing mean, within each trait
+  p_mean <- scaled_df %>%
+    ggplot(aes(
+      x = reorder_within(!!group_var, scaled_value, trait, fun = mean),
+      y = scaled_value
+    )) +
+    geom_boxplot(outlier.size = 0.5) +
+    facet_wrap(~ trait, scales = "free_y", ncol = 1) +
+    scale_x_reordered() +
+    theme_bw() +
+    labs(
+      x = as_label(group_var),
+      y = "Scaled Trait Value",
+      title = paste("Scaled Trait Variation by", as_label(group_var), "(ordered by mean)")
+    )
+  
+  #plot 2 - ordered by decreasing frequency of observation in grouping variable
+  scaled_counts <- scaled_df %>%
+    group_by(!!group_var) %>%
+    mutate(freq = n()) %>%
+    ungroup()
+  
+  p_freq <- scaled_counts %>%
+    ggplot(aes(
+      x = fct_reorder(as.factor(!!group_var), freq, .desc = FALSE),
+      y = scaled_value
+    )) +
+    geom_boxplot(outlier.size = 0.5) +
+    facet_wrap(~ trait, scales = "free_y", ncol = 1) +
+    theme_bw() +
+    labs(
+      x = paste(as_label(group_var), "(ordered by frequency)"),
+      y = "Scaled Trait Value",
+      title = paste("Scaled Trait Variation by", as_label(group_var), "(ordered by number of observations)")
+    )
+  
+  return(list(mean_plot = p_mean, freq_plot = p_freq))
+}
+
+sp_plots <- plot_scaled_traits(data = aus_data,
+                   traits = c("leaf_N_per_dry_mass", "leaf_P_per_dry_mass", "leaf_C_per_dry_mass"),
+                   group_var = "species_binom")
+
+sp_plots$mean_plot
+sp_plots$freq_plot
+
+gen_plots <- plot_scaled_traits(data = aus_data,
+                               traits = c("leaf_N_per_dry_mass", "leaf_P_per_dry_mass", "leaf_C_per_dry_mass"),
+                               group_var = "genus")
+gen_plots$mean_plot
+gen_plots$freq_plot
+
+fam_plots <- plot_scaled_traits(data = aus_data,
+                                traits = c("leaf_N_per_dry_mass", "leaf_P_per_dry_mass", "leaf_C_per_dry_mass"),
+                                group_var = "family")
+fam_plots$mean_plot
+fam_plots$freq_plot
+
+trait_varpart <- function(trait, df) {
+  #this function will calculate and plot variance explained by nested taxonomical structure
+  model <- lmer(formula = as.formula(paste(trait, "~ 1 + (1 | family/genus/species_binom)")), 
+                data = df)
+  
+  print(summary(model))
+  
+  #extract variance components
+  var_components <- as.data.frame(VarCorr(model))
+  variances <- var_components$vcov
+  
+  #assign names
+  names(variances) <- c("Family", "Genus within family", "Species within genus", "Residual (within species)")
+  
+  #calculate proportions
+  total_var <- sum(variances)
+  proportions <- variances / total_var
+  
+  proportions_df <- data.frame(
+    Level = factor(names(proportions), levels = names(proportions)),
+    Proportion = proportions
+  )
+  
+  #species within genus variance = variance between species 
+  #genus within family variance = variance between genera etc. 
+  
+  #plot
+  p <- ggplot(proportions_df, aes(x = fct_inorder(Level), y = Proportion)) +
+    geom_bar() +
+    theme_minimal() +
+    labs(
+      x = "Taxonomic Level",
+      y = "Proportion of Variance",
+      title = paste("Variance partitioning for", trait)
+    ) +
+    coord_flip()
+  
+  return(p)
+}
+
+trait_varpart("leaf_N_per_dry_mass", aus_data) + 
+  trait_varpart("leaf_P_per_dry_mass", aus_data) +
+  trait_varpart("leaf_C_per_dry_mass", aus_data)
+
+#try crossed model: assumes taxonomic categories are independent (which they aren't)
+#family variance here would = variation explained between families
+#genus:variance between genera
+#residual would still be between species
+crossed_mod <- lmer(ln_NP_ratio ~ 1 + 
+                  (1 | family) + 
+                  (1 | genus) + 
+                  (1 | species_binom),
+                data = aus_data)
+
+summary(crossed_mod)
+
+
 
 #--------------------------Leaf Nutrient Concentrations-------------------------
 
@@ -252,7 +472,52 @@ ggplot(aus_data, aes(x = SN_total_0_30, y = sd_ln_NP)) +
   #geom_smooth(method = "lm", col = "blue") +
   theme_classic()
 
-#-----------------------Species Frequency + Spread------------------------------
+
+
+#env. dissimilarity vs. trait dif.
+
+#attempt at repurposing code from Amine Sept.5th
+species <- "Anopterus_glandulosus"
+
+env <- aus_data %>% select(species_binom,
+  SN_total_0_30, SP_total_0_30, SOC_total_0_30,
+  CEC_total_0_30, AP_total_0_30,
+  NPP, MAT, PPT, AET,
+  precipitation_seasonality, temp_seasonality)
+
+trait_matrix <- aus_data %>% select(species_binom,
+                                    leaf_N_per_dry_mass, leaf_P_per_dry_mass, leaf_C_per_dry_mass,
+                                    ln_NP_ratio, ln_CN_ratio, ln_CP_ratio)
+
+Denv <- dist(env %>% filter(species_binom == species) %>% select(-species_binom))
+Dind <- dist(trait_matrix %>% filter(species_binom == species) %>% select(-species_binom))
+plot(Dind, Denv)
+
+#now write it into a loop:
+sp_list <- c("Corymbia_calophylla", "Eucalyptus_tereticornis", "Eucalyptus_tetrodonta",
+             "Corymbia_terminalis", "Eucalyptus_miniata", "Eucalyptus_macrorhyncha",
+             "Acacia_aneura", "Erythrophleum_chlorostachys", "Acacia_rostellifera")
+
+for (sp in sp_list){
+  #create env matrix
+  env <- aus_data %>% select(species_binom,
+                             SN_total_0_30, SP_total_0_30, SOC_total_0_30,
+                             CEC_total_0_30, AP_total_0_30,
+                             NPP, MAT, PPT, AET,
+                             precipitation_seasonality, temp_seasonality)
+  #create trait matrix, exclude ratios for now
+  trait_matrix <- aus_data %>% select(species_binom,
+                                      leaf_N_per_dry_mass, leaf_P_per_dry_mass, leaf_C_per_dry_mass)
+ 
+  Denv <- dist(env %>% filter(species_binom == sp) %>% select(-species_binom))
+  Dind <- dist(trait_matrix %>% filter(species_binom == sp) %>% select(-species_binom))
+  
+  plot(Dind, Denv, main = sp)
+}
+  
+
+
+n#-----------------------Species Frequency + Spread------------------------------
 species <- as.data.frame(table(aus_data$species_binom))  %>%
   arrange(desc(Freq)) %>%
   rename(species_binom = Var1)
@@ -395,6 +660,13 @@ family_sp <- aus_data %>%
 
 View(family_sp)
 
+
+#counts per category:
+View(aus_data %>%
+  count(family, reclass_life_history) %>%
+  group_by(reclass_life_history) %>%
+  mutate(prop = n / sum(n)) %>%
+  arrange(reclass_life_history, desc(prop)))
 
 #--------------------------------Species Identity-------------------------------
 

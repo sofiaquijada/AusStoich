@@ -18,6 +18,7 @@ library(tidyverse)
 library(tidyr)
 library(dplyr)
 library(ggplot2)
+library(rlang) #for looping
 ```
 
 Visualizations for 2025 QCBS Poster Symposium.
@@ -149,11 +150,123 @@ Species-level lin. reg:
 ```{r}
 pruned <- prune_ausdata(aus_data, 62)
 
-ggplot(pruned, aes(x = SN_total_0_30, y = (leaf_N_per_dry_mass), color = species_binom)) +
+env <- c("SN_total_0_30", "SP_total_0_30", "SOC_total_0_30",
+  "CEC_total_0_30", "AP_total_0_30",
+  "NPP", "MAT", "PPT", "AET",
+  "precipitation_seasonality", "temp_seasonality")
+
+for (indep in env) {
+  p <- ggplot(pruned, aes(x = !!sym(indep), y = ln_leaf_N, color = species_binom)) +
   geom_point(alpha = 0.6) +
   geom_smooth(method = "lm", se = FALSE)
   theme_classic() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  plot(p)
+}
+
+```
+
+Genus-level lin reg:
+```{r}
+
+genus <- as.data.frame(table(aus_data$genus)) %>%
+  arrange(desc(Freq)) %>%
+  rename(genus = Var1)
+
+pruned <- prune_genera(aus_data, 96)
+
+env <- c("SN_total_0_30", "SP_total_0_30", "SOC_total_0_30",
+  "CEC_total_0_30", "AP_total_0_30",
+  "NPP", "MAT", "PPT", "AET",
+  "precipitation_seasonality", "temp_seasonality")
+
+for (indep in env){
+  p <- ggplot(pruned, aes(x = !!sym(indep), y = ln_leaf_N, color = genus)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE)
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  plot(p)
+}
+
+```
+
+
+Family-level lin reg:
+```{r}
+
+family <- as.data.frame(table(aus_data$family)) %>%
+  arrange(desc(Freq)) %>%
+  rename(family = Var1)
+
+pruned <- prune_family(aus_data, 108)
+
+env <- c("SN_total_0_30", "SP_total_0_30", "SOC_total_0_30",
+  "CEC_total_0_30", "AP_total_0_30",
+  "NPP", "MAT", "PPT", "AET",
+  "precipitation_seasonality", "temp_seasonality")
+
+for (indep in env){
+  p <- ggplot(pruned, aes(x = !!sym(indep), y = ln_leaf_N, color = family)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE)
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  plot(p)
+}
+
+```
+
+Basic env-trait lin reg:
+
+```{r}
+library(rlang)
+
+env <- c("SN_total_0_30", "SP_total_0_30", "SOC_total_0_30",
+  "CEC_total_0_30", "AP_total_0_30",
+  "NPP", "MAT", "PPT", "AET",
+  "precipitation_seasonality", "temp_seasonality")
+
+for (indep in env) {
+  p <- ggplot(aus_data, aes(x = !!sym(indep), y = (leaf_N_per_dry_mass))) +
+    geom_point(alpha = 0.6) +
+    geom_smooth(method = "lm", se = FALSE) +
+theme_classic() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  plot(p)
+}
+
+```
+
+Env-trait linregs on top taxonomic levels:
+
+```{r}
+library(rlang)
+
+env <- c("SN_total_0_30", "SP_total_0_30", "SOC_total_0_30",
+  "CEC_total_0_30", "AP_total_0_30",
+  "NPP", "MAT", "PPT", "AET",
+  "precipitation_seasonality", "temp_seasonality")
+
+ggplot(aus_data, aes(x = SN_total_0_30, y = (leaf_N_per_dry_mass))) +
+    geom_point(alpha = 0.6) +
+    geom_smooth(method = "lm", se = FALSE) +
+theme_classic() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  plot(p)
+
+for (indep in env) {
+  p <- ggplot(aus_data, aes(x = !!sym(indep), y = (leaf_N_per_dry_mass))) +
+    geom_point(alpha = 0.6) +
+    geom_smooth(method = "lm", se = FALSE) +
+theme_classic() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  plot(p)
+}
+
+
+
 ```
 
 Missing data densities:

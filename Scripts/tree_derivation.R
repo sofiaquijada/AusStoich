@@ -98,3 +98,17 @@ ausdata_tree <- phylo.maker(sp.list = ausdata_tree,
                          scenarios="S3")
 write.tree(ausdata_tree$scenario.3, "Inputs/Trees/ausdata.tre")
 ausdata_tree <- read.tree(here("Inputs/Trees/ausdata.tre"))
+
+
+#2026 addition: Fabaceae only tree
+fab_data <- aus_data %>% subset(family == "Fabaceae")
+fab_tree <- prune_prep_tree(fab_data)
+fab_tree <- as.data.frame(fab_tree) #to remove rownames
+
+fab_tree <- phylo.maker(sp.list = fab_tree,
+                            tree = GBOTB.extended.LCVP,
+                            nodes = nodes.info.1.LCVP,
+                            scenarios="S3")
+write.tree(fab_tree$scenario.3, "Inputs/Trees/fab.tre")
+fab_tree <- read.tree(here("Inputs/Trees/fab.tre"))
+#then go to phylosig to get the tree traits merged

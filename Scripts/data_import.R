@@ -2,7 +2,7 @@
 library(here)
 library(tidyverse)
 
-# Data import ----
+#import data
 all_data <- read_csv(
   file = here('Inputs', 'ausdata_merged_v3_SQ.csv'),
   na = c('', 'NA', '#N/A','uncertain'),
@@ -14,7 +14,7 @@ all_data <- read_csv(
   )
 )
 
-
+#add logged nutrients
 all_data <- all_data %>%
   mutate(
     ln_leaf_N = log(leaf_N_per_dry_mass),
@@ -25,27 +25,77 @@ all_data <- all_data %>%
     ln_CP_ratio = log(CP_ratio)
   ) %>%
   relocate(
+    ln_leaf_N, ln_leaf_P, ln_leaf_C, 
     NP_ratio, CN_ratio, CP_ratio,
     ln_NP_ratio, ln_CN_ratio, ln_CP_ratio,
     .after = leaf_C_per_dry_mass
   )
 
-# Add proportional variation metric for ratios
+#add proportional variation metrics
+#for raw leaf nutrients: use SE
+#for ratios: sd is proportional variation metric, see Isles 2020
+#CV by species, genera, and family
 all_data <- all_data %>%
   group_by(species_binom) %>%
   mutate(
-    sd_N = sd(leaf_N_per_dry_mass, na.rm = TRUE),
-    sd_P = sd(leaf_P_per_dry_mass, na.rm = TRUE),
-    sd_C = sd(leaf_C_per_dry_mass, na.rm = TRUE),
-    sd_ln_NP = sd(ln_NP_ratio, na.rm = TRUE),
-    sd_ln_CP = sd(ln_CP_ratio, na.rm = TRUE),
-    sd_ln_CN = sd(ln_CN_ratio, na.rm = TRUE)
+    SE_N = std_error(leaf_N_per_dry_mass),
+    SE_P = std_error(leaf_P_per_dry_mass),
+    SE_C = std_error(leaf_C_per_dry_mass),
+    CV_N_sp = sd(leaf_N_per_dry_mass, na.rm = TRUE) / mean(leaf_N_per_dry_mass,
+                                                           na.rm = TRUE),
+    CV_P_sp = sd(leaf_P_per_dry_mass, na.rm = TRUE) / mean(leaf_P_per_dry_mass,
+                                                           na.rm = TRUE),
+    CV_C_sp = sd(leaf_C_per_dry_mass, na.rm = TRUE) / mean(leaf_C_per_dry_mass,
+                                                           na.rm = TRUE),
+    sd_ln_NP_sp = sd(ln_NP_ratio, na.rm = TRUE),
+    sd_ln_CP_sp = sd(ln_CP_ratio, na.rm = TRUE),
+    sd_ln_CN_sp = sd(ln_CN_ratio, na.rm = TRUE),
+    SE_ln_NP_sp = std_error(ln_NP_ratio),
+    SE_ln_CP_sp = std_error(ln_CP_ratio),
+    SE_ln_CN_sp = std_error(ln_CN_ratio),
   ) %>%
   ungroup() %>%
-  relocate(sd_N, sd_P, sd_C,
-    sd_ln_NP, sd_ln_CN, sd_ln_CP,
+  relocate(SE_N, SE_P, SE_C,
+    CV_N_sp, CV_P_sp, CV_C_sp,
+    sd_ln_NP_sp, sd_ln_CN_sp, sd_ln_CP_sp,
+    SE_ln_NP_sp, SE_ln_CN_sp, SE_ln_CP_sp,
     .after = ln_CP_ratio
   )
+
+all_data <- all_data %>%
+  group_by(genus) %>%
+  mutate(CV_N_gen = sd(leaf_N_per_dry_mass, na.rm = TRUE) / mean(leaf_N_per_dry_mass,
+                                                             na.rm = TRUE),
+         CV_P_gen = sd(leaf_P_per_dry_mass, na.rm = TRUE) / mean(leaf_P_per_dry_mass,
+                                                             na.rm = TRUE),
+         CV_C_gen = sd(leaf_C_per_dry_mass, na.rm = TRUE) / mean(leaf_C_per_dry_mass,
+                                                             na.rm = TRUE),
+         sd_lnNP_gen = sd(ln_NP_ratio, na.rm = TRUE),
+         sd_lnCN_gen = sd(ln_CN_ratio, na.rm = TRUE), 
+         sd_lnCP_gen = sd(ln_CP_ratio, na.rm = TRUE)
+         ) %>%
+  ungroup() %>%
+  relocate(CV_N_gen, CV_P_gen, CV_C_gen,
+           sd_lnNP_gen, sd_lnCN_gen, sd_lnCP_gen,
+           .after = sd_ln_CP_sp)
+
+all_data <- all_data %>%
+  group_by(family) %>%
+  mutate(CV_N_fam = sd(leaf_N_per_dry_mass, na.rm = TRUE) / mean(leaf_N_per_dry_mass,
+                                                             na.rm = TRUE),
+         CV_P_fam = sd(leaf_P_per_dry_mass, na.rm = TRUE) / mean(leaf_P_per_dry_mass,
+                                                             na.rm = TRUE),
+         CV_C_fam = sd(leaf_C_per_dry_mass, na.rm = TRUE) / mean(leaf_C_per_dry_mass,
+                                                             na.rm = TRUE),
+         sd_lnNP_fam = sd(ln_NP_ratio, na.rm = TRUE),
+         sd_lnCN_fam = sd(ln_CN_ratio, na.rm = TRUE), 
+         sd_lnCP_fam = sd(ln_CP_ratio, na.rm = TRUE)
+         ) %>%
+  ungroup()  %>%
+  relocate(CV_N_fam, CV_P_fam, CV_C_fam,
+           sd_lnNP_fam, sd_lnCN_fam, sd_lnCP_fam,
+           .after = sd_lnCP_gen)
+
 
 # LCVP name standardization - derivation in phylogeny script
 naming_corrections <- read_csv(here('Inputs', 'all_naming_corrections.csv'))
@@ -65,7 +115,7 @@ all_corrected_data <- all_data %>%
   ) %>%
   select(-species_after_correction, -genus_after_correction, -family_after_correction)
 
-# Add myc_type assignment post naming correction
+#add myc_type assignment post naming correction
 all_data <- all_data %>%
   mutate(
     myc_type = as.character(myc_type), 
@@ -92,9 +142,9 @@ outliers <- all_corrected_data |>
 
 outliers_removed_data <- all_corrected_data |> setdiff(outliers)
 
-# Set aus_data to use in subsequent scripts and remove intermediates
+#set aus_data to use in subsequent scripts and remove intermediates
 aus_data <- outliers_removed_data |> relocate(species_binom, .before = woodiness)
 rm(all_data, outliers, naming_corrections, all_corrected_data, outliers_removed_data)
 
-#write csv to run remotely
-#write.csv(aus_data, file = "Remote/Data/aus_data.csv")
+#write csv
+#write.csv(aus_data, file = "aus_data.csv")

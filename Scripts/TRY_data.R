@@ -1,10 +1,10 @@
 library(rtry)
-library(dplyr)
 library(tidyr)
 library(jsonlite)
 library(curl)
 library(data.table)
 library(ggplot2)
+library(dplyr)
 
 setwd("/Users/sofiaquijada/Desktop/")
 getwd()
@@ -80,14 +80,13 @@ View(rtry_explore(trydata_pruned, AccSpeciesName, DataName, sortBy = DataName))
 pivoted <- pivot_wider(trydata_pruned, id_cols = ObservationID,
                       names_from = DataName, values_from = c(StdValue))
 
-pivoted <- pivoted%>% select(!c("Location Country", "Location Region",
-                                "Location Continent"))
+pivoted <- pivoted %>% dplyr::select(-c("Location Country", "Location Region", "Location Continent"))
 
 #location info
 metadata <- pivot_wider(trydata_pruned, id_cols = ObservationID,
     names_from = DataName, values_from = OrigValueStr)
 
-metadata <- metadata %>% select("ObservationID", "Location Country", "Location Region",
+metadata <- metadata %>% dplyr::select("ObservationID", "Location Country", "Location Region",
                                 "Location Continent")
 
 #join both
@@ -150,7 +149,7 @@ coverage <- trait_data %>%
 #basically no CP ratio data (edit, removed all ratio data)
 
 #can fill in continent and country by latlong
-location_data <- trait_data %>% select(ObservationID, Latitude, Longitude,
+location_data <- trait_data %>% dplyr::select(ObservationID, Latitude, Longitude,
                                        continent, region, country)
 
 library(sf)
@@ -182,7 +181,7 @@ geo_info <- geo_info %>%
 #if all three (continent, region, and country) NA, then no lat long associated
 #so just NAs
 
-inspect <- geo_info %>% filter(is.na(continent))
+inspect <- geo_info %>% dplyr::filter(is.na(continent))
 
 #assign continents to fill in (only 20)
 country_to_continent <- tibble::tibble(
@@ -200,7 +199,7 @@ geo_info <- geo_info %>%
   mutate(continent = coalesce(continent, continent_fill)) %>%
   select(-continent_fill)
 
-inspect <- geo_info %>% filter(is.na(continent))
+inspect <- geo_info %>% dplyr::filter(is.na(continent))
 
 region_to_continent <- tibble::tibble(
   region = c("Zhanjiang city,Guangdong", "Weizhou island,Guangxi","Umiujaq, QC, Canada",
@@ -289,10 +288,10 @@ length(unique(trait_data$continent))
 length(unique(trait_data$country))
 
 #note that Oceania is anything that's not explicitely in Australia
-ggplot(trait_data, aes(x = continent, y = leaf_C, color = continent)) +
+ggplot(trait_data, aes(x = continent, y = ln_CP_ratio, color = continent)) +
   geom_boxplot() +
   geom_jitter(alpha = 0.01) +
-  coord_cartesian(ylim = c(0, 1100)) + 
+  coord_cartesian(ylim = c(0, 15)) + 
   theme_classic()
 
 #data coverage

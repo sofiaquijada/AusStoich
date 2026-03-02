@@ -60,5 +60,5 @@ get_info <- function(mod, prec = 4)
   invisible(list(
     R2 = cbind(R2_marginal, R2_conditional),
     prop = cbind(prop_fixed, prop_phylo, prop_species, prop_resid)
-  ))  
+  ))
 }
