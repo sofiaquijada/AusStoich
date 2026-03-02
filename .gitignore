@@ -39,3 +39,5 @@ rsconnect/
 # Ignore directories with "data" in their name
 */*Data/
 */*Results/
+# Ignore root Results folder
+Results/
