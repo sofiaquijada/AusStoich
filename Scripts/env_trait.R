@@ -1,7 +1,9 @@
 library(lme4)
 library(tidyverse)
+library(corrplot)
 library(dplyr)
 library(ggplot2)
+library(MuMIn)
 
 
 #Fiona-requested analysis ------------------------------------------------------
@@ -9,8 +11,7 @@ library(ggplot2)
 #category + env = trait 
 
 #then we can get an idea about whether category is a significant in these analyses
-library(tidyverse)
-library(corrplot)
+
 #set working directory as needed
 setwd("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich")
 
@@ -40,11 +41,17 @@ aus_data <- aus_data %>% mutate(
     NM  = if_else(`NM-AM` == 1, 1L, NM)
   ) %>% select(-`EcM-AM`, -`NM-AM`)
 
+aus_data <- aus_data %>% mutate(AM = as.factor(AM),
+                                NM = as.factor(NM),
+                                EcM = as.factor(EcM),
+                                ErM = as.factor(ErM))
+
 cat_predictors <- c("AM", "EcM", "ErM", "NM", "woodiness", "putative_BNF", "reclass_life_history")
 predictors <- c(cont_predictors, cat_predictors)
 
 #variable selection ------
 env <- as.data.frame(aus_data[predictors])
+
 env <- env %>% mutate(across(all_of(cat_predictors), as.character))
 
 #compute VIF for continuous predictors
@@ -62,13 +69,13 @@ corrplot(cor(aus_data[cont_predictors]))
 aus_data$AET <- NULL
 
 #model matrix for colinearity between categorical and continuous variables
-env_complete <- env[complete.cases(env), ]
+env_complete <- env[complete.cases(env), ] 
 env_complete[cat_predictors] <- lapply(env_complete[cat_predictors], as.factor)
 
-X <- model.matrix(~ ., data = env_complete)
+X <- model.matrix(~ ., data = env_complete) #haven't gotten to work yet
 diag(solve( cor(X)))
 C <- cor(X)
-View(C) #cat variables as is seem to not be correlated with env 
+#View(C) #cat variables as is seem to not be correlated with env 
 #at least not linearly
 #pearson n
 cov(X)
@@ -78,33 +85,80 @@ ggplot(data = aus_data) +
   geom_histogram(mapping = aes(x = leaf_C_per_dry_mass)) +
   theme_minimal()
 
-# Example: trait is your response, cont_predictors and cat_predictors are lists of column names
+#example: trait is your response, cont_predictors and cat_predictors are lists of column names
 formula_fixed <- as.formula(
-  paste("ln_NP_ratio ~", paste(c(cont_predictors, cat_predictors), collapse = " + "))
-)
+  paste("ln_NP_ratio ~", paste(c(cont_predictors, cat_predictors), collapse = " + ")))
 
-#category + taxonomy = trait
-cat_tax_lm <- lmer(
-  ln_NP_ratio ~ AM + EcM + ErM + NM + woodiness +
-    putative_BNF + reclass_life_history +
-    (1 | family/genus/species_binom),
-  data = aus_data)
+
+#---------------category + taxonomy = trait
+
+#note, this lm is singular if fit with ML and not REML so use REML
+cat_tax_lm <- lmer( ln_NP_ratio ~ AM + EcM + ErM + NM + woodiness +
+    putative_BNF + reclass_life_history + (1 | family/genus/species_binom),
+    REML = TRUE, 
+    data = aus_data)
 AIC(cat_tax_lm) #3672.646
 summary(cat_tax_lm)
+#r.squaredGLMM(cat_tax_lm) #gives marginal and conditional R2's
+#why does it get stuck!!!!! bc singular?
 
-library(MuMIn)
-r.squaredGLMM(cat_tax_lm) #gives marginal and conditional R2's
+#write csv of model output, including p test
 
-#category + env = trait
+#checks:
+#homogeneity
+plot(resid(cat_tax_lm) ~ fitted(cat_tax_lm))
+#independence of residuals with each covariate
+plot(resid(cat_tax_lm) ~ model.frame(cat_tax_lm)$putative_BNF)
+#normality of residuals
+hist(resid(cat_tax_lm))
+
+
+
+#----------------category + env = trait
 cat_env_lm <- lm(formula_fixed, data = aus_data)
 summary(cat_env_lm)
 AIC(cat_env_lm) #4906.499
 
+#---check if random effects are necessary
+#create linear model without random effect, calculate its residuals
+#plot residuals against levels of random factors
+cat_env_lm_resid <- rstandard(cat_env_lm)
+#depends on how many obs were used
 
-#category + env + taxonomy = trait
+mf <- model.frame(cat_env_lm)
+rows_used <- as.numeric(rownames(mf))
+
+res <- residuals(cat_env_lm)
+family <- aus_data$family[rows_used]
+
+boxplot(res ~ family,xlab = "family", ylab = "LM residuals")
+
+#checks:
+#homogeneity
+plot(resid(cat_env_lm) ~ fitted(cat_env_lm))
+#independence of residuals with each covariate
+plot(resid(cat_env_lm) ~ model.frame(cat_env_lm)$SN_total_0_30)
+#normality of residuals
+hist(resid(cat_env_lm))
+
+#----------------category + env + taxonomy = trait
+#fit using REML, unsure if this is appropiate
 cat_env_tax_lm <- lmer(
   update(formula_fixed, . ~ . + (1 | family/genus/species_binom)),
-  data = aus_data) 
+  data = aus_data, 
+  REML = TRUE) 
 summary(cat_env_tax_lm)
 AIC(cat_env_tax_lm) #3495.702
 
+#checks:
+#homogeneity
+plot(resid(cat_env_tax_lm) ~ fitted(cat_env_tax_lm))
+#independence of residuals with each covariate
+plot(resid(cat_env_tax_lm) ~ model.frame(cat_env_tax_lm)$SN_total_0_30)
+#normality of residuals
+hist(resid(cat_env_tax_lm))
+
+
+#3 model types, 6 traits - how to plot?
+#Plot estimates based on significance 
+#look at papers that do this too 
