@@ -146,5 +146,27 @@ outliers_removed_data <- all_corrected_data |> setdiff(outliers)
 aus_data <- outliers_removed_data |> relocate(species_binom, .before = woodiness)
 rm(all_data, outliers, naming_corrections, all_corrected_data, outliers_removed_data)
 
+#create binary myc_type categories
+aus_data <- aus_data %>% mutate(
+  AM     = as.integer(myc_type == "AM"),
+  EcM    = as.integer(myc_type == "EcM"),
+  `EcM-AM` = as.integer(myc_type == "EcM-AM"),
+  ErM    = as.integer(myc_type == "ErM"),
+  NM     = as.integer(myc_type == "NM"),
+  `NM-AM`  = as.integer(myc_type == "NM-AM")
+) %>%
+  relocate(AM, EcM, `EcM-AM`, ErM, NM, `NM-AM`, .after = myc_type) %>%
+  #add hybrid data to columns
+  mutate(
+    AM  = if_else(`EcM-AM` == 1 | `NM-AM` == 1, 1L, AM),
+    EcM = if_else(`EcM-AM` == 1, 1L, EcM),
+    NM  = if_else(`NM-AM` == 1, 1L, NM)
+  ) %>% select(-`EcM-AM`, -`NM-AM`)
+
+#ensure they're factors
+aus_data <- aus_data %>% mutate(AM = as.factor(AM),
+                                NM = as.factor(NM),
+                                EcM = as.factor(EcM),
+                                ErM = as.factor(ErM))
 #write csv
-#write.csv(aus_data, file = "aus_data.csv")
+write.csv(aus_data, file = "Inputs/aus_data2026.csv")
