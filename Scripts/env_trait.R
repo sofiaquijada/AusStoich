@@ -7,6 +7,7 @@ library(MuMIn)
 library(broom.mixed)
 library(lmerTest) #to get p-values, Satterthwaite's method
 library(purrr)
+library(moments)
 
 
 #Objective: we want to determine whether category is a significant predictor
@@ -18,10 +19,22 @@ setwd("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich
 #read in trait data
 aus_data <- read_csv(file = "Inputs/aus_data2026.csv")
 
+#post singularity issues: correct skewness of SP ---
+
+skewness(aus_data$SP_total_0_30) #5.194674
+skewness(scale(aus_data$SP_total_0_30)) #same as above
+skewness(log(aus_data$SP_total_0_30)) #1.442164
+skewness(sqrt(aus_data$SP_total_0_30)) #3.226662
+skewness((aus_data$SP_total_0_30)^(1/4)) #2.27701 
+#so log gives smallest skew, replace SP by log(SP)!
+
 #scale continuous predictors for comparable estimates
-cont_predictors <- c("SN_total_0_30", "SP_total_0_30", "SOC_total_0_30",
+cont_predictors <- c("SN_total_0_30", "log_SP_total_0_30", "SOC_total_0_30",
                      "CEC_total_0_30", "AP_total_0_30", "NPP", "MAT", "PPT", "AET",
                      "precipitation_seasonality", "temp_seasonality")
+
+aus_data$log_SP_total_0_30 <- log(aus_data$SP_total_0_30)
+
 aus_data[cont_predictors] <- scale(aus_data[cont_predictors])
 
 #set categorical predictors
@@ -54,7 +67,7 @@ env_cat <- model.matrix(~ ., data = env_complete)
 env_cat <- env_cat[,-1]
 #compute variance inflation factors
 diag(solve(cor(env_cat)))
-cov(env_cat)
+det(cor(env_cat)) #close to 0 or basically 0 youre good
 corrplot(cor(env_cat)) #seems alright
 
 #trait distributions to check normality assumption
@@ -65,10 +78,11 @@ ggplot(data = aus_data) +
 #following loop will run analyses for all traits + outputs and diagnostics
 
 #-----------------------------Analysis loop-------------------------------------
-traits <- c("ln_leaf_N", "ln_leaf_P", "leaf_C_per_dry_mass",
-            "ln_NP_ratio", "ln_CN_ratio", "ln_CP_ratio")
+traits <- c("ln_leaf_N", "ln_leaf_P", "leaf_C_per_dry_mass", "ln_CN_ratio")
+#excluding N:P and C:P due to singularity issues
+#will look at these seperately with genus/species structure without family
 
-basepath <- "Results/Mixed & OLS models"
+basepath <- "Results/MLE Mixed & OLS models"
 
 model_types <- c("cat_tax", "cat_env", "cat_env_tax")
 
@@ -239,18 +253,6 @@ all_var_catax_random$group <- factor(all_var_catax_random$group,
 all_var_catax_random$foliar_trait <- factor(all_var_catax_random$foliar_trait,
   levels = c("pct_var_n","pct_var_p", "pct_var_c", "pct_var_np","pct_var_cp","pct_var_cn"))
 
-ggplot(all_var_catax_random,
-  aes(fill = group, y = pct_var, x = foliar_trait)) +
-  geom_bar(position = "stack", stat = "identity") +
-  labs(x = "Foliar chemistry", y = "Percent of variance explained",
-       title = "Variance Partition of Random Effect in trait ~ category + taxonomy mod") +
-  scale_fill_brewer(name = "", breaks = rev(levels(all_var_catax_random$group)),
-    labels = c("Family","Genus","Species","Residual"), palette = "Dark2") +
-  scale_x_discrete(limits = rev(levels(all_var_catax_random$foliar_trait)),
-                   labels = c("CN", "CP", "NP", "C", "P", "N")) + #set labels backwards to match the proper ordering
-  coord_flip()
-
-
 #taxonomic variance partition table (modeled after Dynarski)
 var_part_table_catax <- all_var_catax_random %>%
   group_by(foliar_trait) %>%
@@ -318,16 +320,6 @@ all_var_catax_total$group <- factor(all_var_catax_total$group,
                                     levels = c("residual","environment","species_binom","genus","family"))
 all_var_catax_total$foliar_trait <- factor(all_var_catax_total$foliar_trait,levels = c("N","P","C","NP","CN","CP"))
 
-ggplot(all_var_catax_total, aes(x = foliar_trait, y = prop, fill = group)) + 
-  geom_bar(stat = "identity") +
-  coord_flip() +
-  labs(x = "Foliar chemistry",y = "Proportion of total variance", 
-       title = "Variance Partition for trait ~ category + taxonomy mod") +
-  scale_fill_brewer(
-    palette = "Dark2",
-    labels = c("Residual","Environment","Species","Genus","Family")
-  )
-
 #try and get consistent colors
 var_colors <- c(residual = "#1B9E77",environment = "#D95F02",
   species_binom = "#7570B3", genus = "#E7298A",family = "#66A61E")
@@ -335,7 +327,7 @@ var_colors <- c(residual = "#1B9E77",environment = "#D95F02",
 ggplot(all_var_catax_random,
        aes(fill = group, y = pct_var, x = foliar_trait)) +
   geom_bar(position = "stack", stat = "identity") +
-  labs(x = "Foliar chemistry", y = "Percent of variance explained",
+  labs(x = "Foliar Chemistry", y = "Percent of variance explained",
        title = "Variance Partition of Random Effect in trait ~ category + taxonomy mod") +
   scale_fill_manual(
     values = var_colors[c("family","genus","species_binom","residual")],
@@ -346,7 +338,15 @@ ggplot(all_var_catax_random,
     limits = rev(levels(all_var_catax_random$foliar_trait)),
     labels = c("CN","CP","NP","C","P","N")
   ) +
-  coord_flip()
+  coord_flip() + 
+  theme(
+    axis.title = element_text(size = 0), #don't want axis titles for now
+    axis.text.y = element_text(size = 14),  
+    axis.text.x = element_text(size = 14),
+    legend.text = element_text(size = 14),
+    legend.title = element_text(size = 16),
+    plot.title = element_text(size = 20)
+  )
 
 ggplot(all_var_catax_total,
        aes(x = foliar_trait, y = prop, fill = group)) +
@@ -358,7 +358,15 @@ ggplot(all_var_catax_total,
   scale_fill_manual(
     values = var_colors,
     breaks = c("residual","environment","species_binom","genus","family"),
-    labels = c("Residual","Environment","Species","Genus","Family")
+    labels = c("Residual","Categories","Species","Genus","Family")
+  ) +
+  theme(
+    axis.title = element_text(size = 0),
+    axis.text.y = element_text(size = 16),   
+    axis.text.x = element_text(size = 14),
+    legend.text = element_text(size = 14),
+    legend.title = element_text(size = 16),
+    plot.title = element_text(size = 20)
   )
 
 #--plots for cat_env_tax
@@ -428,7 +436,15 @@ ggplot(all_var_envcatax_random,
     limits = rev(levels(all_var_catax_random$foliar_trait)),
     labels = c("CN","CP","NP","C","P","N")
   ) +
-  coord_flip()
+  coord_flip() +
+  theme(
+    axis.title = element_text(size = 0),
+    axis.text.y = element_text(size = 16),   
+    axis.text.x = element_text(size = 14),
+    legend.text = element_text(size = 14),
+    legend.title = element_text(size = 16),
+    plot.title = element_text(size = 16)
+  )
 
 ggplot(all_var_envcatax_total,
        aes(x = foliar_trait, y = prop, fill = group)) +
@@ -440,7 +456,15 @@ ggplot(all_var_envcatax_total,
   scale_fill_manual(
     values = var_colors,
     breaks = c("residual","environment","species_binom","genus","family"),
-    labels = c("Residual","Environment","Species","Genus","Family")
+    labels = c("Residual","Categories + Environment","Species","Genus","Family")
+  ) +
+  theme(
+    axis.title = element_text(size = 0),
+    axis.text.y = element_text(size = 16),   
+    axis.text.x = element_text(size = 14),
+    legend.text = element_text(size = 14),
+    legend.title = element_text(size = 16),
+    plot.title = element_text(size = 16)
   )
 
 #---plot model estimates
@@ -541,15 +565,18 @@ plot_coef_models(
 
 #add AIC to the corner of each manually
 
-
 #try:
 remotes::install_github("mastoffel/partR2") 
 library(partR2)
-summary(partR2(ln_leaf_N_cat_tax))
+summary(partR2(ln_CP_ratio_cat_env_tax))
 #this is just fixed but probably doesn't work since fixed is so small
 #could be worthwhile for CP
+partR2(ln_CP_ratio_cat_env_tax) #0.4322 marginal!! same as R2 glmm output
+partR2(ln_CP_ratio_cat_env_tax)$boot_warnings
+partR2(ln_CP_ratio_cat_env_tax)$boot_messages
+#AM explains most of the fixed effect variation... but its all quite small and there are no CI
 
-#-------------scrap-
+#-----------------------------------------scrap
 #for mixed models, check if random effects are necessary
 #create linear model without random effect, calculate its residuals
 #plot residuals against levels of random factors
@@ -563,3 +590,95 @@ res <- residuals(cat_env_lm)
 sp <- aus_data$species_binom[rows_used]
 boxplot(res ~ sp)
 #we know random effects beneficial, so overkill to do this for all
+
+
+#------------------------------------noodling around REML and ML
+aus_data <- read_csv(file = "Inputs/aus_data2026.csv")
+#try fixing skewness of SOP 
+skewness(aus_data$SP_total_0_30) #5.194674
+skewness(scale(aus_data$SP_total_0_30)) #same as above
+
+skewness(log(aus_data$SP_total_0_30)) #1.442164
+skewness(sqrt(aus_data$SP_total_0_30)) #3.226662
+skewness((aus_data$SP_total_0_30)^(1/4)) #2.27701 
+#so log gives smallest skew
+
+#try to see if singularity issue is fixed: 
+
+cont_predictors <- c("SN_total_0_30", "log_SP_total_0_30", "SOC_total_0_30",
+                     "CEC_total_0_30", "AP_total_0_30", "NPP", "MAT", "PPT", "AET",
+                     "precipitation_seasonality", "temp_seasonality")
+
+aus_data$log_SP_total_0_30 <- log(aus_data$SP_total_0_30)
+
+aus_data[cont_predictors] <- scale(aus_data[cont_predictors])
+
+cat_predictors <- c("AM", "EcM", "ErM", "NM", "woodiness", "putative_BNF", "reclass_life_history")
+predictors <- c(cont_predictors, cat_predictors)
+env <- as.data.frame(aus_data[predictors])
+env <- env %>% mutate(across(all_of(cat_predictors), as.character))
+
+#VIF
+diag(solve(cor(env[cont_predictors])))
+
+#highly colinear: AET-PPT, AET-temp_seasonality. Remove AET
+env$AET <- NULL
+cont_predictors <- cont_predictors[cont_predictors != "AET"]
+diag(solve(cor(env[cont_predictors])))
+corrplot(cor(aus_data[cont_predictors]))
+#all VIFs below or marginally above 10 once AET removed
+aus_data$AET <- NULL
+diag(solve(cor(env[cont_predictors])))
+
+traits <- c("ln_leaf_N", "ln_leaf_P", "leaf_C_per_dry_mass",
+            "ln_NP_ratio", "ln_CN_ratio", "ln_CP_ratio")
+
+response <- "ln_CP_ratio"
+
+
+form1 <- as.formula(paste(response, "~",
+                          paste(c(cat_predictors),
+                              collapse = " + "),
+                         "+ (1 | family/genus/species_binom)"))
+
+model1 <- lmer(form1, data = aus_data, REML = FALSE)
+isSingular(model1)
+summary(model1) 
+
+#singular with ln_NP_ratio
+form2 <- as.formula(paste(response, "~",
+                          paste(c("SN_total_0_30", "SOC_total_0_30",
+                          "CEC_total_0_30", "AP_total_0_30", "NPP", "MAT", "PPT",
+                          "precipitation_seasonality", "temp_seasonality", "log_SP_total_0_30",
+                          cat_predictors), collapse = " + ")))
+
+#form2 <- as.formula(paste(response, "~",
+                          #paste(c("SN_total_0_30", "SOC_total_0_30", "SP_total_0_30",
+                                #  "CEC_total_0_30", "AP_total_0_30", "NPP", "MAT", "PPT",
+                                 # "precipitation_seasonality", "temp_seasonality",
+                                 # cat_predictors), collapse = " + ")))
+model2 <- lm(form2, data = aus_data, )
+summary(model2)
+  
+form3 <- as.formula(paste(response, "~",
+      paste(c(cont_predictors, cat_predictors), collapse = " + "),
+      "+ (1 | family/genus/species_binom)"))
+model3 <- lmer(form3, data = aus_data, REML = FALSE)
+summary(model3)
+isSingular(model3)
+
+
+#look into singularities: NP and CP
+#for both, no family level variance
+table(subset(aus_data, !is.na(ln_CP_ratio))$reclass_life_history,
+      subset(aus_data, !is.na(ln_CP_ratio))$woodiness)
+#no woody short lived species
+table(subset(aus_data, !is.na(ln_NP_ratio))$reclass_life_history, subset(aus_data, !is.na(ln_NP_ratio))$woodiness)
+#same for most traits except leaf N has one short lived woody... somehow
+
+table(subset(aus_data, !is.na(ln_CP_ratio))$reclass_life_history,
+      subset(aus_data, !is.na(ln_CP_ratio))$woodiness)
+View(table(subset(aus_data, !is.na(ln_CP_ratio))$AM,
+      subset(aus_data, !is.na(ln_CP_ratio))$NM,
+      subset(aus_data, !is.na(ln_CP_ratio))$ErM,
+      subset(aus_data, !is.na(ln_CP_ratio))$EcM))
