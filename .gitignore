@@ -41,3 +41,18 @@ rsconnect/
 */*Results/
 # Ignore root Results folder
 Results/
+
+# Quarto files
+.quarto/
+_quarto.yml
+*.qmd
+
+# Quarto render outputs
+_site/
+docs/
+_site.yml
+
+# Quarto cache and intermediates
+*_files/
+*_cache/
+.knitr/
