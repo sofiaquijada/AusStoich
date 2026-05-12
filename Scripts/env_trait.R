@@ -6,9 +6,9 @@ library(ggplot2)
 library(MuMIn)
 library(broom.mixed)
 library(lmerTest) #to get p-values, Satterthwaite's method
+#note that lmerTest overrides lme4 lmer() function
 library(purrr)
 library(moments)
-
 
 #Objective: we want to determine whether category is a significant predictor
 #of leaf nutrient concentrations & their ratios
@@ -19,13 +19,19 @@ setwd("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich
 #read in trait data
 aus_data <- read_csv(file = "Inputs/aus_data2026.csv")
 
-#post singularity issues: correct skewness of SP ---
+#ensure categorical variables are factors
+aus_data <- aus_data %>% mutate(AM = as.factor(AM),
+                                NM = as.factor(NM),
+                                EcM = as.factor(EcM),
+                                ErM = as.factor(ErM))
 
+#post singularity issues: correct skewness of SP
 skewness(aus_data$SP_total_0_30) #5.194674
 skewness(scale(aus_data$SP_total_0_30)) #same as above
 skewness(log(aus_data$SP_total_0_30)) #1.442164
 skewness(sqrt(aus_data$SP_total_0_30)) #3.226662
 skewness((aus_data$SP_total_0_30)^(1/4)) #2.27701 
+
 #so log gives smallest skew, replace SP by log(SP)!
 
 #scale continuous predictors for comparable estimates
@@ -35,6 +41,7 @@ cont_predictors <- c("SN_total_0_30", "log_SP_total_0_30", "SOC_total_0_30",
 
 aus_data$log_SP_total_0_30 <- log(aus_data$SP_total_0_30)
 
+#scale after logging SP
 aus_data[cont_predictors] <- scale(aus_data[cont_predictors])
 
 #set categorical predictors
@@ -67,12 +74,12 @@ env_cat <- model.matrix(~ ., data = env_complete)
 env_cat <- env_cat[,-1]
 #compute variance inflation factors
 diag(solve(cor(env_cat)))
-det(cor(env_cat)) #close to 0 or basically 0 youre good
+det(cor(env_cat))
 corrplot(cor(env_cat)) #seems alright
 
 #trait distributions to check normality assumption
 ggplot(data = aus_data) +
-  geom_histogram(mapping = aes(x = ln_leaf_N)) +
+  geom_histogram(mapping = aes(x = ln_CN_ratio)) +
   theme_minimal()
 
 #following loop will run analyses for all traits + outputs and diagnostics
@@ -80,7 +87,7 @@ ggplot(data = aus_data) +
 #-----------------------------Analysis loop-------------------------------------
 traits <- c("ln_leaf_N", "ln_leaf_P", "leaf_C_per_dry_mass", "ln_CN_ratio")
 #excluding N:P and C:P due to singularity issues
-#will look at these seperately with genus/species structure without family
+#will look at these separately with genus/species structure without family
 
 basepath <- "Results/MLE Mixed & OLS models"
 
@@ -102,7 +109,7 @@ for (response in traits) {
                                 collapse = " + "),
                                "+ (1 | family/genus/species_binom)"))
       
-      model <- lmer(form, data = aus_data, REML = TRUE)
+      model <- lmer(form, data = aus_data, REML = FALSE)
       
     } else if (model_type == "cat_env") {
       
@@ -122,7 +129,7 @@ for (response in traits) {
         )
       )
       
-      model <- lmer(form, data = aus_data, REML = TRUE)
+      model <- lmer(form, data = aus_data, REML = FALSE)
     }
     
     #save summary
@@ -565,7 +572,7 @@ plot_coef_models(
 
 #add AIC to the corner of each manually
 
-#try:
+#try: var part for specific fixed effects
 remotes::install_github("mastoffel/partR2") 
 library(partR2)
 summary(partR2(ln_CP_ratio_cat_env_tax))
@@ -633,7 +640,7 @@ diag(solve(cor(env[cont_predictors])))
 traits <- c("ln_leaf_N", "ln_leaf_P", "leaf_C_per_dry_mass",
             "ln_NP_ratio", "ln_CN_ratio", "ln_CP_ratio")
 
-response <- "ln_CP_ratio"
+response <- "ln_NP_ratio"
 
 
 form1 <- as.formula(paste(response, "~",
@@ -663,22 +670,49 @@ summary(model2)
 form3 <- as.formula(paste(response, "~",
       paste(c(cont_predictors, cat_predictors), collapse = " + "),
       "+ (1 | family/genus/species_binom)"))
-model3 <- lmer(form3, data = aus_data, REML = FALSE)
+model3 <- lme4::lmer(form3, data = aus_data, REML = FALSE)
 summary(model3)
 isSingular(model3)
 
+#singularity not caused by SP skew. continue evaluating
 
 #look into singularities: NP and CP
-#for both, no family level variance
-table(subset(aus_data, !is.na(ln_CP_ratio))$reclass_life_history,
-      subset(aus_data, !is.na(ln_CP_ratio))$woodiness)
-#no woody short lived species
-table(subset(aus_data, !is.na(ln_NP_ratio))$reclass_life_history, subset(aus_data, !is.na(ln_NP_ratio))$woodiness)
-#same for most traits except leaf N has one short lived woody... somehow
 
-table(subset(aus_data, !is.na(ln_CP_ratio))$reclass_life_history,
-      subset(aus_data, !is.na(ln_CP_ratio))$woodiness)
-View(table(subset(aus_data, !is.na(ln_CP_ratio))$AM,
-      subset(aus_data, !is.na(ln_CP_ratio))$NM,
-      subset(aus_data, !is.na(ln_CP_ratio))$ErM,
-      subset(aus_data, !is.na(ln_CP_ratio))$EcM))
+#try fitting without family level, cat_tax for NP and CP
+
+testmod <- lmer(ln_NP_ratio ~ AM+ EcM+ ErM+ NM+ woodiness+
+                  putative_BNF+ reclass_life_history+
+                  + (1 | family/genus/species_binom),
+                data = aus_data, REML = FALSE)
+#lme4 and lmer have dif class output, but same functions should in theory work
+
+count(aus_data,is.na(ln_NP_ratio))
+View(augment(ln_NP_ratio_cat_tax)) #this is input, fitted, and other diagnostics
+augmented_NP <- augment(ln_NP_ratio_cat_tax)
+summary(augmented_NP)
+
+table(augmented_NP$reclass_life_history, augmented_NP$woodiness)
+table(augmented_NP$family) #hm ok quite a few with only values of 1
+count(as.data.frame(table(augmented_NP$family)), Freq == 1) #13 to be exact
+
+table(augment(ln_NP_ratio_cat_env_tax)$family)
+
+count(as.data.frame(table(augment(ln_NP_ratio_cat_env_tax)$family)),
+      Freq == 1)#exactly the same
+
+ln_NP_ratio_cat_tax_nofam <- lmer(ln_NP_ratio ~ AM+ EcM+ ErM+ NM+ woodiness+
+                                    putative_BNF+ reclass_life_history+
+                                    + (1 | genus/species_binom),
+                                  data = aus_data, REML = FALSE)
+summary(ln_NP_ratio_cat_tax_nofam) #this works
+
+
+ln_CP_ratio_cat_tax_nofam <- lmer(ln_CP_ratio ~ AM+ EcM+ ErM+ NM+ woodiness+
+                                    putative_BNF+ reclass_life_history+
+                                    + (1 | genus/species_binom),
+                                  data = aus_data, REML = FALSE)
+summary(ln_CP_ratio_cat_tax_nofam)
+
+
+
+#look into rank deficiency of CP term!!
