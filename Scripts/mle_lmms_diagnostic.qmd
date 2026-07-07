@@ -1,0 +1,1239 @@
+---
+title: "mle_lmms_diagnostic"
+format: html
+editor: visual
+---
+
+## Diagnostics of MLE LMMs
+
+Code from mle_lmms script, done here to render pdf of all residual diagnostics. Keep in mind what terms are and aren't included in the model - not all models have the same continuous predictors but we can still visualize residuals against them in case we see a pattern (informative in the case of colinear predictors ex. SOC-SN).
+
+From DHARMa package: "While a significant pattern in the residuals indicates with good reliability that the observed data did likely not originate from the fitted model, this doesn’t necessarily imply that the inferential results from this wrong model are not usable."
+
+Recall random intercept models, not random slope model, so overall each species is expected to "respond" the same way to environmental predictors (even though this is not what we see).
+
+Read in data:
+
+```{r}
+library(tidyverse)
+library(knitr)
+library(DHARMa)
+
+setwd("/Users/sofiaquijada/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich")
+
+#read in trait data
+aus_data <- read_csv(file = "Inputs/aus_data2026.csv")
+
+#scale continuous predictors for comparable estimates
+cont_predictors <- c("SN_total_0_30", "log_SP_total_0_30", "SOC_total_0_30",
+                     "CEC_total_0_30", "AP_total_0_30", "NPP", "MAT", "PPT", "AET",
+                     "precipitation_seasonality", "temp_seasonality")
+
+aus_data$log_SP_total_0_30 <- log(aus_data$SP_total_0_30)
+
+selected_variables <- readRDS("Results/Summer 2026 Analyses/selected_variables.rds")
+
+#scale after logging SP
+aus_data[cont_predictors] <- scale(aus_data[cont_predictors])
+```
+
+# Env-tax
+
+These models have continuous predictors and taxonomic random effect.
+
+## **ln_leaf_N**
+
+```{r}
+ln_leaf_N_env_tax <- readRDS("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich/Results/Summer 2026 Analyses/LMMs/ln_leaf_N/env_tax/ln_leaf_N_env_tax.RDS")
+
+#fill in depending on the RDS that is read in
+mod <- ln_leaf_N_env_tax 
+
+#checks:
+#homogeneity of residuals
+plot(resid(mod) ~ fitted(mod))
+
+#independence of residuals with each covariate
+mf <- model.frame(mod)
+rows_used <- as.numeric(rownames(mf))
+res <- resid(mod)
+
+cont_data <- aus_data[rows_used, cont_predictors]
+
+#looking for homogenous dispersion of residuals around 0
+par(mfrow = c(2, 3), mar = c(4,4,2,1))
+for (v in cont_predictors) {
+  plot(cont_data[[v]], res, xlab = v)
+  abline(h = 0, lty = 2)}
+
+#normality of residuals
+hist(resid(mod))
+
+#amongst random levels, whether they are included or not
+sp <- aus_data$species_binom[rows_used]
+gen <- aus_data$genus[rows_used]
+fam <- aus_data$family[rows_used]
+par(mfrow = c(1, 1), mar = c(4,4,2,1))
+boxplot(res ~ sp)
+boxplot(res ~ gen)
+boxplot(res ~ fam)
+
+rm(mod, mf, rows_used, res, sp, gen, fam, cont_data)
+```
+
+Careful: SN, CEC, AP heteroscedastic... AET and SOC are not predictors.
+
+Check linearity of relationships with predictors:
+
+```{r}
+mod <- ln_leaf_N_env_tax
+
+mf <- model.frame(mod)
+rows_used <- as.numeric(rownames(mf))
+
+plot_data <- aus_data[rows_used, ]
+
+for (v in cont_predictors) {
+  print(
+    ggplot(plot_data, aes(x = .data[[v]], y = ln_leaf_N)) +
+      geom_point(alpha = 0.5) +
+      theme_classic() +
+      labs(
+        x = v,
+        y = "ln_leaf_N",
+        title = paste("ln_leaf_N vs", v)
+      )
+  )
+}
+
+rm(mod, mf, rows_used, plot_data)
+```
+
+Linear relationships aren't strong regardless. Check summary:
+
+```{r}
+summary(ln_leaf_N_env_tax)
+```
+
+MAT and SN/precip seasonality coefficients moderately correlated, also temp seasonality and PPT. Slight significant positive relationships detected for AP, NPP, precip and temp seasonality.
+
+Check simulated residuals from DHARMa and plot residuals against each predictor individually:
+
+```{r}
+mod <- ln_leaf_N_env_tax
+
+mf <- model.frame(mod)
+
+#simulate residuals based on fitted models (expected if model is correctly specified)
+sim <- simulateResiduals(fittedModel = ln_leaf_N_env_tax, plot = TRUE)
+
+testResiduals(sim)
+
+for (v in cont_predictors) {
+  plotResiduals(
+    sim,
+    form = mf[[v]],
+    main = v
+    )
+}
+```
+
+QQ plot: some model assumptions may be violated (uniformity of residuals). For residual vs. predicted plot, expect Uniform(0,1) with concentration around 0.5, which we do somewhat see. Failed KS test - so the residuals aren't distributed as expected under fitted model.
+
+Dispersion test: D = 0.9 close enough to 1... so the residual spread matches what is expected under fitted model.
+
+Outliers: there are many observations that the model predicts poorly, but from the test we can conclude that the model doesn't have an unusual amount of extreme observations.
+
+From residual plots, looking for red dashed line around 0.5, all are curved and there are many repeated observations at the same predictor value: unsure if these are same species or not.
+
+Repeated observations, investigate by family:
+
+```{r}
+dharmares_df <- cbind(
+  mf,
+  dharma_resid = sim$scaledResiduals
+)
+
+#12 most common families
+top_families <- dharmares_df %>%
+  count(family, sort = TRUE) %>%
+  slice_head(n = 12) %>% 
+  pull(family)
+
+
+for (v in selected_variables$ln_leaf_N) {
+  print(
+    ggplot(
+      dharmares_df %>% filter(family %in% top_families),
+      aes(x = .data[[v]], y = dharma_resid)) +
+      geom_point(alpha = 0.5) +
+      facet_wrap(~family) +
+      theme_classic()
+  )
+}
+
+#plot dharma residuals by family
+ggplot(dharmares_df,
+       aes(x = reorder(family, dharma_resid, median),
+           y = dharma_resid)) +
+  theme_classic() +
+  geom_boxplot(outlier.alpha = 0.2) +
+  coord_flip()
+
+rm(top_families)
+```
+
+Expect uniform distribution of dharma residuals (0,1), centered around 0.5. Can observe systematic relationships with several predictors that differ dramatically by family ((although I haven't seen people use random slopes usually).. Some families biased towards residuals around 0, others around 1. Investigate by genera, then species:
+
+```{r}
+#12 most common genera
+top_genera <- dharmares_df %>%
+  count(genus, sort = TRUE) %>%
+  slice_head(n = 12) %>% 
+  pull(genus)
+
+for (v in selected_variables$ln_leaf_N) {
+  print(
+    ggplot(dharmares_df %>% filter(genus %in% top_genera),
+      aes(x = .data[[v]], y = dharma_resid)) +
+      theme_classic() +
+      geom_point(alpha = 0.5) +
+      facet_wrap(~genus)
+    )
+}
+
+#plot dharma residuals by genus
+ggplot(dharmares_df,
+       aes(x = reorder(genus, dharma_resid, median),
+           y = dharma_resid)) +
+  theme_classic() +
+  geom_boxplot(outlier.alpha = 0.2) +
+  coord_flip()
+
+rm(top_genera)
+```
+
+Same as family. Species:
+
+```{r}
+top_species <- dharmares_df %>%
+  count(species_binom, sort = TRUE) %>%
+  slice_head(n = 12) %>% 
+  pull(species_binom)
+
+for (v in selected_variables$ln_leaf_N) {
+  print(
+    ggplot(dharmares_df %>% filter(species_binom %in% top_species),
+      aes(x = .data[[v]], y = dharma_resid)) +
+      theme_classic() +
+      geom_point(alpha = 0.5) +
+      facet_wrap(~species_binom)
+    )
+}
+
+#plot dharma residuals by species
+ggplot(dharmares_df,
+       aes(x = reorder(species_binom, dharma_resid, median),
+           y = dharma_resid)) +
+  theme_classic() +
+  geom_boxplot(outlier.alpha = 0.2) +
+  coord_flip()
+
+rm(top_species)
+```
+
+Note to self: this exploration was mostly to detect how much of a problem heteroscedasticity in residuals for SN, CEC, and AP was, can conlude it's likely a relic of intraspecific variation in responses not being adequately captured by random intercepts: can see families, genera, and species respond differently to predictors, and by visual inspection these differences are most prominent in SN, CEC, and AP.
+
+Within the nested taxonomic groups, some levels are overpredicted and some are underpredicted (all residuals above/below 0.5 for the entire level). This pattern likely holds throughout for all traits but may be made more prominent for subsets of data that have missing values.
+
+```{r}
+rm(dharmares_df, sim, v)
+```
+
+## **ln_leaf_P**
+
+```{r}
+ln_leaf_P_env_tax <- readRDS("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich/Results/Summer 2026 Analyses/LMMs/ln_leaf_P/env_tax/ln_leaf_P_env_tax.RDS")
+
+#fill in depending on the RDS that is read in
+mod <- ln_leaf_P_env_tax 
+
+#checks:
+#homogeneity of residuals
+plot(resid(mod) ~ fitted(mod))
+
+#independence of residuals with each covariate
+mf <- model.frame(mod)
+rows_used <- as.numeric(rownames(mf))
+res <- resid(mod)
+
+cont_data <- aus_data[rows_used, cont_predictors]
+
+#looking for homogenous dispersion of residuals around 0
+par(mfrow = c(2, 3), mar = c(4,4,2,1))
+for (v in cont_predictors) {
+  plot(cont_data[[v]], res, xlab = v)
+  abline(h = 0, lty = 2)}
+
+#normality of residuals
+hist(resid(mod))
+
+#amongst random levels, whether they are included or not
+sp <- aus_data$species_binom[rows_used]
+gen <- aus_data$genus[rows_used]
+fam <- aus_data$family[rows_used]
+par(mfrow = c(1, 1), mar = c(4,4,2,1))
+boxplot(res ~ sp)
+boxplot(res ~ gen)
+boxplot(res ~ fam)
+
+rm(mod, mf, rows_used, res, sp, gen, fam, cont_data)
+```
+
+No predictor causes concern here, all homogenous. AET and SOC not predictors.
+
+Check linearity of relationships:
+
+```{r}
+summary(ln_leaf_P_env_tax)
+
+mod <- ln_leaf_P_env_tax
+
+mf <- model.frame(mod)
+rows_used <- as.numeric(rownames(mf))
+
+plot_data <- aus_data[rows_used, ]
+
+for (v in cont_predictors) {
+  print(
+    ggplot(plot_data, aes(x = .data[[v]], y = ln_leaf_P)) +
+      geom_point(alpha = 0.5) +
+      theme_classic() +
+      labs(
+        x = v,
+        y = "ln_leaf_P",
+        title = paste("ln_leaf_P vs", v)
+      )
+  )
+}
+
+rm(mod, mf, rows_used, plot_data)
+```
+
+Linear relationships much easier to detect! Check DHARMa diagnostics:
+
+```{r}
+mod <- ln_leaf_P_env_tax
+
+mf <- model.frame(mod)
+
+#simulate residuals based on fitted models (expected if model is correctly specified)
+sim <- simulateResiduals(fittedModel = ln_leaf_P_env_tax, plot = TRUE)
+
+testResiduals(sim)
+
+for (v in cont_predictors) {
+  plotResiduals(
+    sim,
+    form = mf[[v]],
+    main = v
+    )
+}
+```
+
+Uniformity of dharma residuals violated, as well as outlier test failed: number of simulated values (from fitted model) that are outliers relative to observed data are more common than expected - suggests fitted model predicts a considerable amount of observations poorly.
+
+```{r}
+dharmares_df <- cbind(
+  mf,
+  dharma_resid = sim$scaledResiduals
+)
+
+#12 most common families
+top_families <- dharmares_df %>%
+  count(family, sort = TRUE) %>%
+  slice_head(n = 12) %>% 
+  pull(family)
+
+
+for (v in selected_variables$ln_leaf_P) {
+  print(
+    ggplot(
+      dharmares_df %>% filter(family %in% top_families),
+      aes(x = .data[[v]], y = dharma_resid)) +
+      geom_point(alpha = 0.5) +
+      facet_wrap(~family) +
+      theme_classic()
+  )
+}
+
+#plot dharma residuals by family
+ggplot(dharmares_df,
+       aes(x = reorder(family, dharma_resid, median),
+           y = dharma_resid)) +
+  theme_classic() +
+  geom_boxplot(outlier.alpha = 0.2) +
+  coord_flip()
+
+rm(top_families, mf, mod, dharmares_df, sim, v, cont_data)
+```
+
+Again, don't see heterogeneity issue here (at least not as dramatically as in leaf N). Unsure why outlier test is failing.
+
+## **leaf_C_per_dry_mass**
+
+```{r}
+leaf_C_per_dry_mass_env_tax <- readRDS("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich/Results/Summer 2026 Analyses/LMMs/leaf_C_per_dry_mass/env_tax/leaf_C_per_dry_mass_env_tax.RDS")
+
+#fill in depending on the RDS that is read in
+mod <- leaf_C_per_dry_mass_env_tax 
+
+#checks:
+#homogeneity of residuals
+plot(resid(mod) ~ fitted(mod))
+
+#independence of residuals with each covariate
+mf <- model.frame(mod)
+rows_used <- as.numeric(rownames(mf))
+res <- resid(mod)
+
+cont_data <- aus_data[rows_used, cont_predictors]
+
+#looking for homogenous dispersion of residuals around 0
+par(mfrow = c(2, 3), mar = c(4,4,2,1))
+for (v in cont_predictors) {
+  plot(cont_data[[v]], res, xlab = v)
+  abline(h = 0, lty = 2)}
+
+#normality of residuals
+hist(resid(mod))
+
+#amongst random levels, whether they are included or not
+sp <- aus_data$species_binom[rows_used]
+gen <- aus_data$genus[rows_used]
+fam <- aus_data$family[rows_used]
+par(mfrow = c(1, 1), mar = c(4,4,2,1))
+boxplot(res ~ sp)
+boxplot(res ~ gen)
+boxplot(res ~ fam)
+
+rm(mod, mf, rows_used, res, sp, gen, fam, cont_data)
+```
+
+CEC is a little weird here. AET, SOC, and PPT not predictors.
+
+Check linearity of relationships:
+
+```{r}
+summary(leaf_C_per_dry_mass_env_tax)
+
+mod <- leaf_C_per_dry_mass_env_tax
+
+mf <- model.frame(mod)
+rows_used <- as.numeric(rownames(mf))
+
+plot_data <- aus_data[rows_used, ]
+
+for (v in cont_predictors) {
+  print(
+    ggplot(plot_data, aes(x = .data[[v]], y = leaf_C_per_dry_mass)) +
+      geom_point(alpha = 0.5) +
+      theme_classic() +
+      labs(
+        x = v,
+        y = "leaf C",
+        title = paste("leaf C vs", v)
+      )
+  )
+}
+
+rm(mod, mf, rows_used, plot_data)
+```
+
+NPP has unusually high estimate, temp_seasonality also. Variance of intercepts at random effects much larger magnitude (due to unlogged response?). Can see where heterogeneity may come in: observations concentrated at the lower end of CEC, and the spread is lower at higher values.
+
+```{r}
+mod <- leaf_C_per_dry_mass_env_tax
+
+mf <- model.frame(mod)
+
+#simulate residuals based on fitted models (expected if model is correctly specified)
+sim <- simulateResiduals(fittedModel = leaf_C_per_dry_mass_env_tax, plot = TRUE)
+
+testResiduals(sim)
+
+for (v in cont_predictors) {
+  plotResiduals(
+    sim,
+    form = mf[[v]],
+    main = v
+    )
+}
+```
+
+Like leaf P, both uniformity and outlier test failed (this time on the higher end as well! Can see from CEC plot those residuals are \~Uniform(0,1) concentrated around 0.5 so estimate is probably alright. Unsure where outliers are coming from. Check responses by family:
+
+```{r}
+dharmares_df <- cbind(
+  mf,
+  dharma_resid = sim$scaledResiduals
+)
+
+#12 most common families
+top_families <- dharmares_df %>%
+  count(family, sort = TRUE) %>%
+  slice_head(n = 12) %>% 
+  pull(family)
+
+
+for (v in selected_variables$leaf_C_per_dry_mass) {
+  print(
+    ggplot(
+      dharmares_df %>% filter(family %in% top_families),
+      aes(x = .data[[v]], y = dharma_resid)) +
+      geom_point(alpha = 0.5) +
+      facet_wrap(~family) +
+      theme_classic()
+  )
+}
+
+#plot dharma residuals by family
+ggplot(dharmares_df,
+       aes(x = reorder(family, dharma_resid, median),
+           y = dharma_resid)) +
+  theme_classic() +
+  geom_boxplot(outlier.alpha = 0.2) +
+  coord_flip()
+
+rm(top_families, mf, mod, dharmares_df, sim, v)
+```
+
+Can see distinct relationships per family, and possibly a greater effect of missing data: only one species per family more likely, so less data coverage to get at responses per predictor.
+
+## **ln_NP_ratio**
+
+```{r}
+ln_NP_ratio_env_tax <- readRDS("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich/Results/Summer 2026 Analyses/LMMs/ln_NP_ratio/env_tax/ln_NP_ratio_env_tax.RDS")
+
+#fill in depending on the RDS that is read in
+mod <- ln_NP_ratio_env_tax 
+
+#checks:
+#homogeneity of residuals
+plot(resid(mod) ~ fitted(mod))
+
+#independence of residuals with each covariate
+mf <- model.frame(mod)
+rows_used <- as.numeric(rownames(mf))
+res <- resid(mod)
+
+cont_data <- aus_data[rows_used, cont_predictors]
+
+#looking for homogenous dispersion of residuals around 0
+par(mfrow = c(2, 3), mar = c(4,4,2,1))
+for (v in cont_predictors) {
+  plot(cont_data[[v]], res, xlab = v)
+  abline(h = 0, lty = 2)}
+
+#normality of residuals
+hist(resid(mod))
+
+#amongst random levels, whether they are included or not
+sp <- aus_data$species_binom[rows_used]
+gen <- aus_data$genus[rows_used]
+fam <- aus_data$family[rows_used]
+par(mfrow = c(1, 1), mar = c(4,4,2,1))
+boxplot(res ~ sp)
+boxplot(res ~ gen)
+boxplot(res ~ fam)
+
+rm(mod, mf, rows_used, res, sp, gen, fam, cont_data)
+```
+
+No predictor causes concern here. AET and SOC not predictors here. Check linearity of relationships:
+
+```{r}
+summary(ln_NP_ratio_env_tax)
+
+mod <- ln_NP_ratio_env_tax
+
+mf <- model.frame(mod)
+rows_used <- as.numeric(rownames(mf))
+
+plot_data <- aus_data[rows_used, ]
+
+for (v in cont_predictors){
+  print(
+    ggplot(plot_data, aes(x = .data[[v]], y = ln_NP_ratio)) +
+      geom_point(alpha = 0.5) +
+      theme_classic() +
+      labs(
+        x = v,
+        y = "ln NP ratio",
+        title = paste("ln NP ratio vs", v)
+      )
+  )
+}
+
+rm(mod, mf, rows_used, plot_data)
+```
+
+Significant relationships detected, although low estimates. Some clear linear relationships (albeit with lots of variance) but some non-linear ones as well.. Repeated species observations much more evident in this subset (similar to the Phosphorus only subset)
+
+```{r}
+mod <- ln_NP_ratio_env_tax
+
+mf <- model.frame(mod)
+
+#simulate residuals based on fitted models (expected if model is correctly specified)
+sim <- simulateResiduals(fittedModel = ln_NP_ratio_env_tax, plot = TRUE)
+
+testResiduals(sim)
+
+for (v in cont_predictors) {
+  plotResiduals(
+    sim,
+    form = mf[[v]],
+    main = v
+    )
+}
+```
+
+Uniformity test failed, dispersion test failed - observed data is less dispersed than expected under fitted model (D = 0.8) but there are some lme4 caveats to this...
+
+Note that a common reason for underdispersion is a needlessly complicated model (it may not be the case here though).
+
+```{r}
+dharmares_df <- cbind(
+  mf,
+  dharma_resid = sim$scaledResiduals
+)
+
+#12 most common families
+top_families <- dharmares_df %>%
+  count(family, sort = TRUE) %>%
+  slice_head(n = 12) %>% 
+  pull(family)
+
+
+for (v in selected_variables$ln_NP_ratio) {
+  print(
+    ggplot(
+      dharmares_df %>% filter(family %in% top_families),
+      aes(x = .data[[v]], y = dharma_resid)) +
+      geom_point(alpha = 0.5) +
+      facet_wrap(~family) +
+      theme_classic()
+  )
+}
+
+#plot dharma residuals by family
+ggplot(dharmares_df,
+       aes(x = reorder(family, dharma_resid, median),
+           y = dharma_resid)) +
+  theme_classic() +
+  geom_boxplot(outlier.alpha = 0.2) +
+  coord_flip()
+
+rm(top_families, mf, mod, dharmares_df, sim, v)
+```
+
+Not as heterogenous as other responses.
+
+## **ln_CN_ratio**
+
+```{r}
+ln_CN_ratio_env_tax <- readRDS("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich/Results/Summer 2026 Analyses/LMMs/ln_CN_ratio/env_tax/ln_CN_ratio_env_tax.RDS")
+
+#fill in depending on the RDS that is read in
+mod <- ln_CN_ratio_env_tax 
+
+#checks:
+#homogeneity of residuals
+plot(resid(mod) ~ fitted(mod))
+
+#independence of residuals with each covariate
+mf <- model.frame(mod)
+rows_used <- as.numeric(rownames(mf))
+res <- resid(mod)
+
+cont_data <- aus_data[rows_used, cont_predictors]
+
+#looking for homogenous dispersion of residuals around 0
+par(mfrow = c(2, 3), mar = c(4,4,2,1))
+for (v in cont_predictors) {
+  plot(cont_data[[v]], res, xlab = v)
+  abline(h = 0, lty = 2)}
+
+#normality of residuals
+hist(resid(mod))
+
+#amongst random levels, whether they are included or not
+sp <- aus_data$species_binom[rows_used]
+gen <- aus_data$genus[rows_used]
+fam <- aus_data$family[rows_used]
+par(mfrow = c(1, 1), mar = c(4,4,2,1))
+boxplot(res ~ sp)
+boxplot(res ~ gen)
+boxplot(res ~ fam)
+
+rm(mod, mf, rows_used, res, sp, gen, fam, cont_data)
+```
+
+SN and NPP is a little weird: lots of low residuals on lower values. AET, SOC, and PPT not predictors. Check linearity of relationships:
+
+```{r}
+summary(ln_CN_ratio_env_tax)
+
+mod <- ln_CN_ratio_env_tax
+
+mf <- model.frame(mod)
+rows_used <- as.numeric(rownames(mf))
+
+plot_data <- aus_data[rows_used, ]
+
+for (v in cont_predictors) {
+  print(
+    ggplot(plot_data, aes(x = .data[[v]], y = ln_CN_ratio)) +
+      geom_point(alpha = 0.5) +
+      theme_classic() +
+      labs(
+        x = v,
+        y = "ln CN ratio",
+        title = paste("ln CN ratio vs", v)
+      )
+  )
+}
+
+rm(mod, mf, rows_used, plot_data)
+```
+
+Can see some non-linear relationships, lots of heterogeneity. Can see where low residuals are coming from in SN and NPP: correspond to low values of CN ratio.
+
+```{r}
+mod <- ln_CN_ratio_env_tax
+
+mf <- model.frame(mod)
+
+#simulate residuals based on fitted models (expected if model is correctly specified)
+sim <- simulateResiduals(fittedModel = ln_CN_ratio_env_tax, plot = TRUE)
+
+testResiduals(sim)
+
+for (v in cont_predictors) {
+  plotResiduals(
+    sim,
+    form = mf[[v]],
+    main = v
+    )
+}
+```
+
+Uniformity test failed.
+
+```{r}
+dharmares_df <- cbind(
+  mf,
+  dharma_resid = sim$scaledResiduals
+)
+
+#12 most common families
+top_families <- dharmares_df %>%
+  count(family, sort = TRUE) %>%
+  slice_head(n = 12) %>% 
+  pull(family)
+
+
+for (v in selected_variables$ln_CN_ratio) {
+  print(
+    ggplot(
+      dharmares_df %>% filter(family %in% top_families),
+      aes(x = .data[[v]], y = dharma_resid)) +
+      geom_point(alpha = 0.5) +
+      facet_wrap(~family) +
+      theme_classic()
+  )
+}
+
+#plot dharma residuals by family
+ggplot(dharmares_df,
+       aes(x = reorder(family, dharma_resid, median),
+           y = dharma_resid)) +
+  theme_classic() +
+  geom_boxplot(outlier.alpha = 0.2) +
+  coord_flip()
+
+rm(top_families, mf, mod, dharmares_df, sim, v)
+```
+
+Can see missing data clearly here.
+
+## **ln_CP_ratio**
+
+```{r}
+ln_CP_ratio_env_tax <- readRDS("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich/Results/Summer 2026 Analyses/LMMs/ln_CP_ratio/env_tax/ln_CP_ratio_env_tax.RDS")
+
+#fill in depending on the RDS that is read in
+mod <- ln_CP_ratio_env_tax 
+
+#checks:
+#homogeneity of residuals
+plot(resid(mod) ~ fitted(mod))
+
+#independence of residuals with each covariate
+mf <- model.frame(mod)
+rows_used <- as.numeric(rownames(mf))
+res <- resid(mod)
+
+cont_data <- aus_data[rows_used, cont_predictors]
+
+#looking for homogenous dispersion of residuals around 0
+par(mfrow = c(2, 3), mar = c(4,4,2,1))
+for (v in cont_predictors) {
+  plot(cont_data[[v]], res, xlab = v)
+  abline(h = 0, lty = 2)}
+
+#normality of residuals
+hist(resid(mod))
+
+#amongst random levels, whether they are included or not
+sp <- aus_data$species_binom[rows_used]
+gen <- aus_data$genus[rows_used]
+fam <- aus_data$family[rows_used]
+par(mfrow = c(1, 1), mar = c(4,4,2,1))
+boxplot(res ~ sp)
+boxplot(res ~ gen)
+boxplot(res ~ fam)
+
+rm(mod, mf, rows_used, res, sp, gen, fam, cont_data)
+```
+
+Can see multiple observations at same site much more clearly (vertical lines). AET, SOC, PPT and temp_seasonality not predictors. Nothing of concern except for the lines?
+
+```{r}
+summary(ln_CP_ratio_env_tax)
+
+mod <- ln_CP_ratio_env_tax
+
+mf <- model.frame(mod)
+rows_used <- as.numeric(rownames(mf))
+
+plot_data <- aus_data[rows_used, ]
+
+for (v in cont_predictors) {
+  print(
+    ggplot(plot_data, aes(x = .data[[v]], y = ln_CN_ratio)) +
+      geom_point(alpha = 0.5) +
+      theme_classic() +
+      labs(
+        x = v,
+        y = "ln CP ratio",
+        title = paste("ln CP ratio vs", v)
+      )
+  )
+}
+
+rm(mod, mf, rows_used, plot_data)
+```
+
+Missing data is definitely in effect here. Estimates are very low.
+
+```{r}
+mod <- ln_CP_ratio_env_tax
+
+mf <- model.frame(mod)
+
+#simulate residuals based on fitted models (expected if model is correctly specified)
+sim <- simulateResiduals(fittedModel = ln_CP_ratio_env_tax, plot = TRUE)
+
+testResiduals(sim)
+
+for (v in cont_predictors) {
+  plotResiduals(
+    sim,
+    form = mf[[v]],
+    main = v
+    )
+}
+```
+
+Deviation test failed. Quantile deviations detected : distribution of residuals changes depending on the predicted value. This is probably due to heterogeneity
+
+Fitting terminated with step failure: problem with the quantile smooth curve.
+
+```{r}
+dharmares_df <- cbind(
+  mf,
+  dharma_resid = sim$scaledResiduals
+)
+
+#12 most common families
+top_families <- dharmares_df %>%
+  count(family, sort = TRUE) %>%
+  slice_head(n = 12) %>% 
+  pull(family)
+
+
+for (v in selected_variables$ln_CP_ratio) {
+  print(
+    ggplot(
+      dharmares_df %>% filter(family %in% top_families),
+      aes(x = .data[[v]], y = dharma_resid)) +
+      geom_point(alpha = 0.5) +
+      facet_wrap(~family) +
+      theme_classic()
+  )
+}
+
+#plot dharma residuals by family
+ggplot(dharmares_df,
+       aes(x = reorder(family, dharma_resid, median),
+           y = dharma_resid)) +
+  theme_classic() +
+  geom_boxplot(outlier.alpha = 0.2) +
+  coord_flip()
+
+rm(top_families, mf, mod, dharmares_df, sim, v)
+```
+
+Missing data evident here.
+
+## Tax
+
+These models are simply the taxonomical random effect.
+
+## **ln_leaf_N**
+
+```{r}
+ln_leaf_N_tax <- readRDS("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich/Results/Summer 2026 Analyses/LMMs/ln_leaf_N/tax/ln_leaf_N_tax.RDS")
+
+#fill in depending on the RDS that is read in
+mod <- ln_leaf_N_tax
+
+#checks:
+#homogeneity of residuals
+plot(resid(mod) ~ fitted(mod))
+
+#independence of residuals with each covariate
+mf <- model.frame(mod)
+rows_used <- as.numeric(rownames(mf))
+res <- resid(mod)
+
+cont_data <- aus_data[rows_used, cont_predictors]
+
+#looking for homogenous dispersion of residuals around 0
+par(mfrow = c(2, 3), mar = c(4,4,2,1))
+for (v in cont_predictors) {
+  plot(cont_data[[v]], res, xlab = v)
+  abline(h = 0, lty = 2)}
+
+#normality of residuals
+hist(resid(mod))
+
+#amongst random levels, whether they are included or not
+sp <- aus_data$species_binom[rows_used]
+gen <- aus_data$genus[rows_used]
+fam <- aus_data$family[rows_used]
+par(mfrow = c(1, 1), mar = c(4,4,2,1))
+boxplot(res ~ sp)
+boxplot(res ~ gen)
+boxplot(res ~ fam)
+
+rm(mod, mf, rows_used, res, sp, gen, fam, cont_data)
+```
+
+Again, SN, CEC, and SN heteroscedastic. None of the continuous variables are predictors though!!
+
+```{r}
+mod <- ln_leaf_N_tax
+
+mf <- model.frame(mod)
+
+#simulate residuals based on fitted models (expected if model is correctly specified)
+sim <- simulateResiduals(fittedModel = ln_leaf_N_tax, plot = TRUE)
+
+testResiduals(sim)
+
+rm(mod, mf, sim, v)
+```
+
+Uniformity test failed. Within group deviations from uniformity significant: at least one group has a residual distribution inconsistent with the fitted model... but unsure what catPred is here.
+
+## **ln_leaf_P**
+
+```{r}
+ln_leaf_P_tax <- readRDS("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich/Results/Summer 2026 Analyses/LMMs/ln_leaf_P/tax/ln_leaf_P_tax.RDS")
+
+#fill in depending on the RDS that is read in
+mod <- ln_leaf_P_tax
+
+#checks:
+#homogeneity of residuals
+plot(resid(mod) ~ fitted(mod))
+
+#independence of residuals with each covariate
+mf <- model.frame(mod)
+rows_used <- as.numeric(rownames(mf))
+res <- resid(mod)
+
+cont_data <- aus_data[rows_used, cont_predictors]
+
+#looking for homogenous dispersion of residuals around 0
+par(mfrow = c(2, 3), mar = c(4,4,2,1))
+for (v in cont_predictors) {
+  plot(cont_data[[v]], res, xlab = v)
+  abline(h = 0, lty = 2)}
+
+#normality of residuals
+hist(resid(mod))
+
+#amongst random levels, whether they are included or not
+sp <- aus_data$species_binom[rows_used]
+gen <- aus_data$genus[rows_used]
+fam <- aus_data$family[rows_used]
+par(mfrow = c(1, 1), mar = c(4,4,2,1))
+boxplot(res ~ sp)
+boxplot(res ~ gen)
+boxplot(res ~ fam)
+
+rm(mod, mf, rows_used, res, sp, gen, fam, cont_data)
+```
+
+Heteroscedasticity not a concern for this data subset. No continuous variable is a predictor.
+
+```{r}
+mod <- ln_leaf_P_tax
+
+mf <- model.frame(mod)
+
+#simulate residuals based on fitted models (expected if model is correctly specified)
+sim <- simulateResiduals(fittedModel = ln_leaf_P_tax, plot = TRUE)
+
+testResiduals(sim)
+
+rm(mod, mf, sim, v)
+```
+
+Uniformity test, dispersion test, and outlier test failed. Within group deviations from uniformity significant.
+
+## **leaf_C_per_dry_mass**
+
+```{r}
+leaf_C_per_dry_mass_tax <- readRDS("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich/Results/Summer 2026 Analyses/LMMs/leaf_C_per_dry_mass/tax/leaf_C_per_dry_mass_tax.RDS")
+
+#fill in depending on the RDS that is read in
+mod <- leaf_C_per_dry_mass_tax
+
+#checks:
+#homogeneity of residuals
+plot(resid(mod) ~ fitted(mod))
+
+#independence of residuals with each covariate
+mf <- model.frame(mod)
+rows_used <- as.numeric(rownames(mf))
+res <- resid(mod)
+
+cont_data <- aus_data[rows_used, cont_predictors]
+
+#looking for homogenous dispersion of residuals around 0
+par(mfrow = c(2, 3), mar = c(4,4,2,1))
+for (v in cont_predictors) {
+  plot(cont_data[[v]], res, xlab = v)
+  abline(h = 0, lty = 2)}
+
+#normality of residuals
+hist(resid(mod))
+
+#amongst random levels, whether they are included or not
+sp <- aus_data$species_binom[rows_used]
+gen <- aus_data$genus[rows_used]
+fam <- aus_data$family[rows_used]
+par(mfrow = c(1, 1), mar = c(4,4,2,1))
+boxplot(res ~ sp)
+boxplot(res ~ gen)
+boxplot(res ~ fam)
+
+rm(mod, mf, rows_used, res, sp, gen, fam, cont_data)
+```
+
+Heteroscedastic: CEC, SN? None are predictors.
+
+```{r}
+mod <-  leaf_C_per_dry_mass_tax
+
+mf <- model.frame(mod)
+
+#simulate residuals based on fitted models (expected if model is correctly specified)
+sim <- simulateResiduals(fittedModel =  leaf_C_per_dry_mass_tax, plot = TRUE)
+
+testResiduals(sim)
+
+rm(mod, mf, sim, v)
+```
+
+Uniformity test failed - in opposite direction (observed \> expected).. residuals seem higher than usual, above 0.5 consistently.
+
+## **ln_NP_ratio**
+
+```{r}
+ln_NP_ratio_tax <- readRDS("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich/Results/Summer 2026 Analyses/LMMs/ln_NP_ratio/tax/ln_NP_ratio_tax.RDS")
+
+#fill in depending on the RDS that is read in
+mod <- ln_NP_ratio_tax
+
+#checks:
+#homogeneity of residuals
+plot(resid(mod) ~ fitted(mod))
+
+#independence of residuals with each covariate
+mf <- model.frame(mod)
+rows_used <- as.numeric(rownames(mf))
+res <- resid(mod)
+
+cont_data <- aus_data[rows_used, cont_predictors]
+
+#looking for homogenous dispersion of residuals around 0
+par(mfrow = c(2, 3), mar = c(4,4,2,1))
+for (v in cont_predictors) {
+  plot(cont_data[[v]], res, xlab = v)
+  abline(h = 0, lty = 2)}
+
+#normality of residuals
+hist(resid(mod))
+
+#amongst random levels, whether they are included or not
+sp <- aus_data$species_binom[rows_used]
+gen <- aus_data$genus[rows_used]
+fam <- aus_data$family[rows_used]
+par(mfrow = c(1, 1), mar = c(4,4,2,1))
+boxplot(res ~ sp)
+boxplot(res ~ gen)
+boxplot(res ~ fam)
+
+rm(mod, mf, rows_used, res, sp, gen, fam, cont_data)
+```
+
+```{r}
+mod <- ln_NP_ratio_tax
+
+mf <- model.frame(mod)
+
+#simulate residuals based on fitted models (expected if model is correctly specified)
+sim <- simulateResiduals(fittedModel = ln_NP_ratio_tax, plot = TRUE)
+
+testResiduals(sim)
+
+rm(mod, mf, sim, v)
+```
+
+Deviation and dispersion test failed.
+
+## **ln_CN_ratio**
+
+```{r}
+ln_CN_ratio_tax <- readRDS("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich/Results/Summer 2026 Analyses/LMMs/ln_CN_ratio/tax/ln_CN_ratio_tax.RDS")
+
+#fill in depending on the RDS that is read in
+mod <- ln_CN_ratio_tax
+
+#checks:
+#homogeneity of residuals
+plot(resid(mod) ~ fitted(mod))
+
+#independence of residuals with each covariate
+mf <- model.frame(mod)
+rows_used <- as.numeric(rownames(mf))
+res <- resid(mod)
+
+cont_data <- aus_data[rows_used, cont_predictors]
+
+#looking for homogenous dispersion of residuals around 0
+par(mfrow = c(2, 3), mar = c(4,4,2,1))
+for (v in cont_predictors) {
+  plot(cont_data[[v]], res, xlab = v)
+  abline(h = 0, lty = 2)}
+
+#normality of residuals
+hist(resid(mod))
+
+#amongst random levels, whether they are included or not
+sp <- aus_data$species_binom[rows_used]
+gen <- aus_data$genus[rows_used]
+fam <- aus_data$family[rows_used]
+par(mfrow = c(1, 1), mar = c(4,4,2,1))
+boxplot(res ~ sp)
+boxplot(res ~ gen)
+boxplot(res ~ fam)
+
+rm(mod, mf, rows_used, res, sp, gen, fam, cont_data)
+```
+
+```{r}
+mod <- ln_CN_ratio_tax
+
+mf <- model.frame(mod)
+
+#simulate residuals based on fitted models (expected if model is correctly specified)
+sim <- simulateResiduals(fittedModel = ln_CN_ratio_tax, plot = TRUE)
+
+testResiduals(sim)
+
+rm(mod, mf, sim, v)
+```
+
+Uniformity test failed.
+
+## **ln_CP_ratio**
+
+```{r}
+ln_CP_ratio_tax <- readRDS("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich/Results/Summer 2026 Analyses/LMMs/ln_CP_ratio/tax/ln_CP_ratio_tax.RDS")
+
+#fill in depending on the RDS that is read in
+mod <- ln_CP_ratio_tax
+
+#checks:
+#homogeneity of residuals
+plot(resid(mod) ~ fitted(mod))
+
+#independence of residuals with each covariate
+mf <- model.frame(mod)
+rows_used <- as.numeric(rownames(mf))
+res <- resid(mod)
+
+cont_data <- aus_data[rows_used, cont_predictors]
+
+#looking for homogenous dispersion of residuals around 0
+par(mfrow = c(2, 3), mar = c(4,4,2,1))
+for (v in cont_predictors) {
+  plot(cont_data[[v]], res, xlab = v)
+  abline(h = 0, lty = 2)}
+
+#normality of residuals
+hist(resid(mod))
+
+#amongst random levels, whether they are included or not
+sp <- aus_data$species_binom[rows_used]
+gen <- aus_data$genus[rows_used]
+fam <- aus_data$family[rows_used]
+par(mfrow = c(1, 1), mar = c(4,4,2,1))
+boxplot(res ~ sp)
+boxplot(res ~ gen)
+boxplot(res ~ fam)
+
+rm(mod, mf, rows_used, res, sp, gen, fam, cont_data)
+```
+
+```{r}
+mod <- ln_CP_ratio_tax
+
+mf <- model.frame(mod)
+
+#simulate residuals based on fitted models (expected if model is correctly specified)
+sim <- simulateResiduals(fittedModel = ln_CP_ratio_tax, plot = TRUE)
+
+testResiduals(sim)
+
+rm(mod, mf, sim, v)
+```
+
+Uniformity test failed: observed \>\>\>\> expected.

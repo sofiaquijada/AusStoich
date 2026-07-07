@@ -4,10 +4,10 @@ library(dplyr)
 library(coda)
 
 plot_estimates <- function(model, model_name = "") {
-  #extract fixed effects summary
+  # extract fixed effects summary
   fixed_summary <- summary(model)$solutions
   
-  #make df
+  # make df
   fixed_df <- data.frame(
     term = rownames(fixed_summary),
     mean = fixed_summary[, "post.mean"],
@@ -15,36 +15,37 @@ plot_estimates <- function(model, model_name = "") {
     upper = fixed_summary[, "u-95% CI"]
   )
   
-  #effective sample size
+  # effective sample size
   ess <- effectiveSize(model$Sol)
   fixed_df$ess <- ess[fixed_df$term]
   
-  #append
+  # append ESS to label
   fixed_df$term_label <- paste0(fixed_df$term, " (ESS: ", round(fixed_df$ess), ")")
   
-  #order
-  fixed_df$term_label <- factor(fixed_df$term_label, levels = fixed_df$term_label[order(fixed_df$mean)])
+  # order by estimate
+  fixed_df$term_label <- factor(
+    fixed_df$term_label,
+    levels = fixed_df$term_label[order(fixed_df$mean)]
+  )
   
-  #set significance
+  # significance: CI does not cross 0
   fixed_df$significant <- with(fixed_df, lower * upper > 0)
   
-  #plot
-  ggplot(fixed_df, aes(x = term_label, y = mean, fill = significant)) +
-    geom_col(width = 0.6) +
-    geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2, color = "grey60") +
-    coord_flip() +
-    geom_hline(yintercept = 0, linetype = "dashed") +
-    scale_fill_manual(values = c("grey80", "darkolivegreen4")) +
+  # plot
+  ggplot(fixed_df, aes(x = mean, y = term_label, color = significant)) +
+    geom_vline(xintercept = 0, linetype = "dashed") +
+    geom_errorbarh(aes(xmin = lower, xmax = upper), height = 0.2) +
+    geom_point(size = 3) +
+    scale_color_manual(values = c("FALSE" = "grey60", "TRUE" = "darkolivegreen4")) +
     labs(
-      x = NULL, y = "Posterior Mean Estimate",
+      x = "Posterior Mean Estimate",
+      y = NULL,
       title = model_name,
-      fill = "Significant"
+      color = "Significant"
     ) +
     theme_minimal(base_size = 14)
 }
-
-
-plot_estimates(CP1, "CP")
+plot_estimates(leaf_C_per_dry_mass_chain1, "")
 
 #------ variance partioning stacked bar plot
 
@@ -76,4 +77,6 @@ var_plot <- function(model, model_name = "") {
       axis.text.x = element_blank(),
       axis.ticks.x = element_blank()
     )
-}
+  }
+
+var_plot(ln_NP_ratio_chain3, "N:P")

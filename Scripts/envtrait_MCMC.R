@@ -18,7 +18,7 @@ BiocManager::install("ggtree")
 #SP will be logged since residuals are skewed from env_trait diagnostics
 #---- double check this with an old MCMC object (expect to see skewness)
 
-#-------------------------read in data
+#-------------------------------Read in Data------------------------------------
 
 #set working directory as needed
 setwd("")
@@ -50,7 +50,7 @@ ausdata_tree$node.label <- NULL
 #inverted phylogenetic covariance matrix
 phyloinv <- inverseA(ausdata_tree, nodes ="TIPS",scale=TRUE)
 
-#-----------------------prep for MCMCglmm
+#-----------------------------Prep for MCMCglmm---------------------------------
 #get column for phylo tip labels, and another for species
 aus_data$phylo <- aus_data$species_binom
 
@@ -84,7 +84,7 @@ for (response in traits) {
   rm(p)
 }
 
-#-------------------------variance partitioning function
+#-------------------------------VarPart function--------------------------------
 
 #from Amine
 get_info <- function(mod, prec = 4){
@@ -151,7 +151,7 @@ get_info <- function(mod, prec = 4){
   ))
 }
 
-#-------------------------MCMCglmm
+#-------------------------------MCMCglmm----------------------------------------
 
 #inverse wishart prior for phylogeny
 prior_phylo <- list(
@@ -253,3 +253,210 @@ for (response in traits) {
     gc() #garbage collection
   }
 }
+
+#-------------------------------Diagnostics-------------------------------------
+
+#set wd to onedrive where mods stored
+
+#set this in session
+setwd("~/Library/CloudStorage/OneDrive-SharedLibraries-McGillUniversity/Fiona Soper, Dr - Sofia AusStoich Project/Summer 2026")
+
+plot_residuals <- function(model, response, model_name = "") {
+  # Get posterior predictive means of the data
+  # If you know some linear algebra, you can see the this
+  # is like fitting each point to the average value of your
+  # posterior distribution for each parameter.
+  predicted <- model$X %*% colMeans(model$Sol)
+  
+  # The residuals are simply the observed values minus
+  # the predicted values
+  residuals <- response - predicted
+  
+  # Plot residuals vs fitted values
+  # too small of a deviance from the observed values
+  # are indicative of overfitting.
+  plot(predicted, residuals,
+       main = paste("Residuals", model_name),
+  )
+  abline(h = 0, lty = 2, col = "grey40")
+}
+
+#define chain
+chain1 <- ln_CN_ratio_chain1
+chain2 <- ln_CN_ratio_chain2
+chain3 <- ln_CN_ratio_chain3
+
+#plot residuals: assess whether flattened at 0
+plot_residuals(chain3, aus_data$ln_CN_ratio, "C:N")
+
+#trace plots
+plot(chain1)
+
+#--plots for pre-existing model objects:
+
+combined_chains_sol <- mcmc.list(chain1$Sol, chain2$Sol, chain3$Sol)
+combined_chains_VCV <- mcmc.list(chain1$VCV, chain2$VCV, chain3$VCV)
+
+autocorr.plot(combined_chains_sol)
+autocorr.plot(combined_chains_VCV)
+
+geweke.plot(combined_chains_sol)
+geweke.plot(combined_chains_VCV)
+
+heidel.diag(combined_chains_sol)
+heidel.diag(combined_chains_VCV)
+
+gelman.plot(combined_chains_VCV)
+gelman.plot(combined_chains_sol)
+gelman.diag(combined_chains_VCV)
+gelman.diag(combined_chains_sol)
+
+
+#---------------------------------Results---------------------------------------
+#note:
+x <- get_info(chain)
+x$prop #returns MCMC sample matrix with the proportions, need to take mean of samples
+
+#variance partitioning plot
+#try to theme it exactly like LMMs
+
+extract_var <- function(chain, trait){
+  
+  res <- get_info(chain)
+  
+  #take mean variance proportions
+  means <- colMeans(res$prop)
+  
+  data.frame(
+    foliar_trait = trait,
+    group = c("environment", "phylogeny", "species", "residual"),
+    prop = means
+  )
+}
+
+#prepare for plotting
+#ADDD RATIOS ONCE CP IS DONE RUNNING
+total_parts <- bind_rows(
+  extract_var(ln_leaf_N_chain1,  "N"),
+  extract_var(ln_leaf_P_chain1,  "P"),
+  extract_var(leaf_C_per_dry_mass_chain1,  "C"),
+  extract_var(ln_NP_ratio_chain1, "N:P"),
+  extract_var(ln_CN_ratio_chain1, "C:N")
+  #extract_var(ln_CP_ratio_chain1)
+  )
+
+total_parts$group <- factor(
+  total_parts$group,
+  levels = c("residual", "environment", "species", "phylogeny"))
+
+ggplot(total_parts,
+       aes(x = foliar_trait,
+           y = prop,
+           fill = group)) +
+  geom_col() +
+  coord_flip() +
+  labs(
+    x = "Foliar chemistry",
+    y = "Proportion of total variance",
+    title = "Variance Partition in trait ~ Enviroment + Phylogeny + Species mod"
+  ) +
+  scale_fill_manual(
+    values = c(
+      phylogeny = "#0099CC",
+      species = "#7570B3",
+      environment = "#D95F02",
+      residual = "#1B9E77"
+    ),
+    breaks = c("phylogeny", "species", "environment", "residual"),
+    labels = c("Phylogeny", "Species", "Environment", "Residual")
+  ) +
+  scale_x_discrete(
+    limits = rev(levels(factor(total_parts$foliar_trait))),
+    labels = c("CN","NP","C","P","N")) + #modify to include CP after
+  theme_minimal() +
+  theme(
+    axis.title = element_text(size = 0),
+    axis.text.y = element_text(size = 16),
+    axis.text.x = element_text(size = 14),
+    legend.text = element_text(size = 14),
+    legend.title = element_text(size = 16),
+    plot.title = element_text(size = 16)
+  )
+
+
+#plot estimates
+plot_coefs_mcmc <- function(model, trait_name){
+  
+  #fixed effects summary
+  coef_df <- as.data.frame(summary(model)$solutions)
+  coef_df$term <- rownames(coef_df)
+  
+  #remove intercept
+  coef_df <- coef_df |>
+    dplyr::filter(term != "(Intercept)") |>
+    dplyr::rename(
+      estimate = post.mean,
+      lower = `l-95% CI`,
+      upper = `u-95% CI`
+    )
+  
+  #predictor labels
+  term_labels <- c(
+    AET = "Actual Evapotranspiration",
+    temp_seasonality = "Temperature Seasonality",
+    precipitation_seasonality = "Precipitation Seasonality",
+    PPT = "Precipitation",
+    NPP = "Net Primary Productivity",
+    MAT = "Mean Annual Temperature",
+    CEC_total_0_30 = "Cation Exchange Capacity",
+    AP_total_0_30 = "Available Phosphorus",
+    log_SP_total_0_30 = "Total Soil Phosphorus (log)",
+    SOC_total_0_30 = "Total Soil Carbon",
+    SN_total_0_30 = "Total Soil Nitrogen"
+  )
+  
+  predictor_order <- c(
+    "temp_seasonality",
+    "precipitation_seasonality",
+    "PPT",
+    "NPP",
+    "MAT",
+    "CEC_total_0_30",
+    "AP_total_0_30",
+    "log_SP_total_0_30",
+    "SOC_total_0_30",
+    "SN_total_0_30"
+  )
+  
+  coef_df$term <- factor(coef_df$term,
+                         levels = predictor_order)
+  
+  ggplot(coef_df,
+         aes(x = estimate,
+             y = term)) +
+    geom_vline(xintercept = 0,
+               linetype = "dashed") +
+    geom_errorbarh(aes(xmin = lower,
+                       xmax = upper),
+                   height = 0) +
+    geom_point(size = 3) +
+    scale_y_discrete(labels = term_labels) +
+    labs(
+      x = "Posterior mean",
+      y = "",
+      title = trait_name
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.y = element_text(size = 13),
+      axis.text.x = element_text(size = 12),
+      plot.title = element_text(size = 15)
+    )
+}
+
+plot_coefs_mcmc(ln_leaf_N_chain1, "Leaf N - MCMC")
+plot_coefs_mcmc(ln_leaf_P_chain1, "Leaf P - MCMC")
+plot_coefs_mcmc(leaf_C_per_dry_mass_chain1, "Leaf C - MCMC")
+plot_coefs_mcmc(ln_NP_ratio_chain1, "N:P ratio - MCMC")
+plot_coefs_mcmc(ln_CN_ratio_chain1, "C:N ratio - MCMC")
+plot_coefs_mcmc(ln_CP_ratio_chain1, "C:P ratio - MCMC")

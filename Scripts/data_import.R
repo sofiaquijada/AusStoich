@@ -169,4 +169,5 @@ aus_data <- aus_data %>% mutate(AM = as.factor(AM),
                                 EcM = as.factor(EcM),
                                 ErM = as.factor(ErM))
 #write csv
-write.csv(aus_data, file = "Inputs/aus_data2026.csv")
+write.csv(aus_data, file = "Inputs/aus_data2026.csv") 
+#note this doesn't save factor coding for binary variables

@@ -12,6 +12,7 @@ httpgd::hgd() #VS code plot viewer
 hgd_browse()
 
 aus_data
+#scrap script, reorganization tbd 
 
 #------------------------Environmental Data Variation---------------------------
 summary(aus_data) # look at quartiles, where most data lies
@@ -517,7 +518,7 @@ for (sp in sp_list){
   
 
 
-n#-----------------------Species Frequency + Spread------------------------------
+#-----------------------Species Frequency + Spread------------------------------
 species <- as.data.frame(table(aus_data$species_binom))  %>%
   arrange(desc(Freq)) %>%
   rename(species_binom = Var1)

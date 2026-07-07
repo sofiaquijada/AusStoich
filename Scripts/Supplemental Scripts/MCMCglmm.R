@@ -84,7 +84,7 @@ aus_data<- as.data.frame(aus_data)
 ausdata_all_pos_sp <- ausdata_all_pos_sp %>%
   filter(!is.na(myc_type) & !is.na(woodiness))
 aus_data <- aus_data %>%
-  filter(!is.na(myc_type) & !is.na(woodiness))
+  filter(!is.na(myc_type) & !is.na(woodiness)) #here is where the 116 rows are dropped
 
 
 #variable selection ------------------------------------------------------------
@@ -114,7 +114,7 @@ ggplot(data = aus_data) +
   geom_histogram(mapping = aes(x = (ln_CP_ratio))) +
   theme_minimal()
 
-#MCMCglmm-----------=-----------------------------------------------------------
+#MCMCglmm-----------------------------------------------------------------------
 
 
 #inverse wishart prior for phylogeny
@@ -318,7 +318,11 @@ plot_residuals <- function(model, response, model_name = "") {
   abline(h = 0, lty = 2, col = "grey40")
 }
 
-plot_residuals(chain1, ausdata_all_pos_sp$ln_leaf_N, "leaf N")
+aus_data <- aus_data %>%
+  filter(!is.na(myc_type) & !is.na(woodiness))
+
+plot_residuals(leaf_C_per_dry_mass_chain1, aus_data$leaf_C_per_dry_mass, "leaf C")
+
 #model diagnostics -------------------------------------------------------------
 
 plot_mcmc <- function(mcmc_obj){

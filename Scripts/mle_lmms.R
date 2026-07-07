@@ -160,7 +160,7 @@ boxplot(res ~ fam)
 rm(mod, mf, rows_used, res, sp, gen, fam)
 #these results all summarized in mle_lmms_diagnostic.qmd
 
-#-------------------------------Results-------------------------------------
+#-------------------------------Results-----------------------------------------
 varpart_random <- function(mod) {
   #this function is meant to partition variance of nested random effects
   #modeled after Dynarski 2021 Ecology
@@ -359,6 +359,9 @@ ggplot(total_parts_envtax,
     breaks = c("residual","environment","species_binom","genus","family"),
     labels = c("Residual","Environment","Species","Genus","Family")
   ) +
+  scale_x_discrete(
+    limits = rev(levels(total_parts_envtax$foliar_trait)),
+    labels = c("CN","CP","NP","C","P","N")) +
   theme(
     axis.title = element_text(size = 0),
     axis.text.y = element_text(size = 16),   
@@ -443,3 +446,7 @@ plot_coefs(ln_CN_ratio_env_tax, "Results/Summer 2026 Analyses/LMMs/ln_CN_ratio/e
            "C:N ratio")
 plot_coefs(ln_CP_ratio_env_tax, "Results/Summer 2026 Analyses/LMMs/ln_CP_ratio/env_tax/ln_CP_ratio_env_tax_tidy.csv",
            "C:P ratio")
+
+#CN most substantially explained by env
+library(partR2)
+summary(partR2(ln_CN_ratio_env_tax))

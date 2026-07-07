@@ -10,6 +10,9 @@ library(corrplot)
 library(stringr)
 library(car)
 
+#amine email sept 10
+#try nu = 0.002, then 1, then 5 then 10 
+#look for changes in the narrowness of the posterior credible intervals 
 
 #data import -------------------------------------------------------------------
 

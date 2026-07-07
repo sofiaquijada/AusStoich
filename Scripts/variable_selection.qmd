@@ -1,0 +1,676 @@
+---
+title: "Variable Selection"
+format: html
+editor: visual
+---
+
+This document is meant to perform variable selection and adjust for colinearity within subsets of environmental data (seperated by nutrient or nutrient ratio response). The results from this script will serve as reference for inputs to LMM (nlme) and MCMCglmm analyses.
+
+To adjust for colinearity, a combination of vif filtering and inspection via PCA will be used. There should be some metric of nitrogen and some metric of phosphorus (AP makes more sense) in the subset.
+
+## Read in data
+
+Variable selection is not the same thing as adjusting for colinearity.
+
+Won't use categorical variables, too difficult to interpret. From previous attempts, will use logSP version to see correct for skewness in residuals of the SP term.
+
+```{r}
+library(ggplot2)
+library(factoextra)
+library(caret)
+library(tidyverse)
+library(corrplot)
+library(usdm)
+
+#needs this since its qmd
+setwd("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich")
+
+aus_data <- read_csv(file = "Inputs/aus_data2026.csv")
+
+#use logSP, recall without it residuals are skewed
+cont_predictors <- c("SN_total_0_30", "log_SP_total_0_30", "SOC_total_0_30",
+                     "CEC_total_0_30", "AP_total_0_30", "NPP", "MAT", "PPT", "AET",
+                     "precipitation_seasonality", "temp_seasonality")
+
+aus_data$log_SP_total_0_30 <- log(aus_data$SP_total_0_30)
+
+#scale data
+aus_data[cont_predictors] <- scale(aus_data[cont_predictors])
+```
+
+## Leaf Nitrogen
+
+Given that there are no NAs in leaf N, the environmental data subset should be the entire dataset.
+
+```{r}
+#subset data
+N_data <- subset(aus_data, !is.na(ln_leaf_N))
+env_N <- as.data.frame(N_data[cont_predictors])
+
+#compute variable inflation factor
+diag(solve(cor(env_N)))
+
+#correlation plot
+corrplot(cor(env_N))
+
+cor(env_N) %>%
+  as.data.frame() %>%
+  mutate(var1 = rownames(.)) %>%
+  pivot_longer(cols = -var1, names_to = "var2", values_to = "value") %>%
+  filter(var1 != var2) %>%
+  filter(var1 < var2) %>%
+  arrange(desc(abs(value)))
+```
+
+Variable with problematic VIF: AET. Correlations: SN-SOC, temp-seasonality-AET, AET- PPT. SN-SP-SOC correlated. Will manually keep SN as we are interested in this variable.
+
+```{r}
+#biplot
+fviz_pca_var(prcomp(env_N), col.var = "black",repel = TRUE, title = "Env - Leaf N") 
+
+#screeplot
+fviz_eig(prcomp(env_N), addlabels = TRUE)
+
+#vif filtering
+vifstep(env_N, th = 10, keep = "SN_total_0_30")
+
+#remove AET
+env_N$AET <- NULL
+
+cor(env_N) %>%
+  as.data.frame() %>%
+  mutate(var1 = rownames(.)) %>%
+  pivot_longer(cols = -var1, names_to = "var2", values_to = "value") %>%
+  filter(var1 != var2) %>%
+  filter(var1 < var2) %>%
+  arrange(desc(abs(value)))
+```
+
+SOC-SN still very correlated, so remove SOC. Overall, removed SOC and AET.
+
+```{r}
+#remove SOC
+env_N$SOC_total_0_30 <- NULL
+
+diag(solve(cor(env_N)))
+
+cor(env_N) %>%
+  as.data.frame() %>%
+  mutate(var1 = rownames(.)) %>%
+  pivot_longer(cols = -var1, names_to = "var2", values_to = "value") %>%
+  filter(var1 != var2) %>%
+  filter(var1 < var2) %>%
+  arrange(desc(abs(value)))
+```
+
+Now all vifs are under 10. Plot all remaining relationships:
+
+```{r}
+for (env_var in colnames(env_N)) {
+
+  model <- lm(
+    as.formula(paste("ln_leaf_N ~", env_var)),
+    data = N_data
+  )
+
+  r2 <- summary(model)$r.squared
+  p <- summary(model)$coefficients[2, 4]
+
+  print(
+    ggplot(N_data, aes(x = .data[[env_var]], y = ln_leaf_N)) +
+      geom_point() +
+      geom_smooth(method = "lm", se = FALSE) +
+      labs(
+        x = env_var,
+        y = "ln_leaf_N",
+        subtitle = paste0(
+          "R² = ", round(r2, 3),
+          ", p = ", signif(p, 3)
+        )
+      )
+  )
+}
+
+rm(model)
+```
+
+Straight lines are from the same site.
+
+**Conclusion: for leaf N, remove AET and SOC.**
+
+## Leaf Phosphorus
+
+Here the data subset is much smaller, 50% of the original dataset.
+
+```{r}
+#subset data
+P_data <- subset(aus_data, !is.na(ln_leaf_P))
+env_P <- as.data.frame(P_data[cont_predictors])
+
+#compute variable inflation factor
+diag(solve(cor(env_P)))
+
+#correlation plot
+corrplot(cor(env_P))
+
+cor(env_P) %>%
+  as.data.frame() %>%
+  mutate(var1 = rownames(.)) %>%
+  pivot_longer(cols = -var1, names_to = "var2", values_to = "value") %>%
+  filter(var1 != var2) %>%
+  filter(var1 < var2) %>%
+  arrange(desc(abs(value)))
+```
+
+Variables with problematic VIF: AET, SN. Correlations: SN-SOC, temp-seasonality-AET, AET- PPT. Again will manually keep SN as we are interested in this variable. Overall very similar diagnostics to the whole data subset, SN is more of a problem than in leaf N.
+
+We want to keep some measure of phosphorus.
+
+```{r}
+#biplot
+fviz_pca_var(prcomp(env_P), col.var = "black",repel = TRUE, title = "Env - Leaf P") 
+
+#screeplot
+fviz_eig(prcomp(env_P), addlabels = TRUE)
+
+#vif filtering
+vifstep(env_P, th = 10, keep = "SN_total_0_30")
+
+#again, remove AET
+env_P$AET <- NULL
+
+cor(env_P) %>%
+  as.data.frame() %>%
+  mutate(var1 = rownames(.)) %>%
+  pivot_longer(cols = -var1, names_to = "var2", values_to = "value") %>%
+  filter(var1 != var2) %>%
+  filter(var1 < var2) %>%
+  arrange(desc(abs(value)))
+```
+
+Once again, SOC-SN still very correlated, so remove SOC. Overall, removed SOC and AET.
+
+```{r}
+#remove SOC
+env_P$SOC_total_0_30 <- NULL
+
+diag(solve(cor(env_P)))
+
+cor(env_P) %>%
+  as.data.frame() %>%
+  mutate(var1 = rownames(.)) %>%
+  pivot_longer(cols = -var1, names_to = "var2", values_to = "value") %>%
+  filter(var1 != var2) %>%
+  filter(var1 < var2) %>%
+  arrange(desc(abs(value)))
+```
+
+Now all VIFS are under 10. Plot the relationships:
+
+```{r}
+for (env_var in colnames(env_P)) {
+
+  model <- lm(
+    as.formula(paste("ln_leaf_P ~", env_var)),
+    data = P_data
+  )
+
+  r2 <- summary(model)$r.squared
+  p <- summary(model)$coefficients[2, 4]
+
+  print(
+    ggplot(P_data, aes(x = .data[[env_var]], y = ln_leaf_P)) +
+      geom_point() +
+      geom_smooth(method = "lm", se = FALSE) +
+      labs(
+        x = env_var,
+        y = "ln_leaf_P",
+        subtitle = paste0(
+          "R² = ", round(r2, 3),
+          ", p = ", signif(p, 3)
+        )
+      )
+  )
+}
+
+rm(model)
+```
+
+Relationships showing much more evident slopes.
+
+**Conclusion: remove AET and SOC. Exact same process and results as the one undertaken by Leaf N.**
+
+## Leaf Carbon
+
+The data subset for leaf carbon is 40% of the original.
+
+```{r}
+#subset data
+C_data <- subset(aus_data, !is.na(leaf_C_per_dry_mass))
+env_C <- as.data.frame(C_data[cont_predictors])
+
+#compute variable inflation factor
+diag(solve(cor(env_C)))
+
+#correlation plot
+corrplot(cor(env_C))
+
+cor(env_C) %>%
+  as.data.frame() %>%
+  mutate(var1 = rownames(.)) %>%
+  pivot_longer(cols = -var1, names_to = "var2", values_to = "value") %>%
+  filter(var1 != var2) %>%
+  filter(var1 < var2) %>%
+  arrange(desc(abs(value)))
+```
+
+Variable with problematic VIF: AET, SN, temp_seasonality. Correlations: AET-PPT, AET-temp_seasonality, SN-SOC. Will manually keep SN as we are interested in this variable. Correlations are the same between Leaf N/P/C, but more problematic in the C subset likely due to smaller sample size, difference is that AET-PPT and AET-temp_seasonality are more colinear than SN-SOC.
+
+```{r}
+#biplot
+fviz_pca_var(prcomp(env_C), col.var = "black",repel = TRUE, title = "Env - Leaf C") 
+
+#screeplot
+fviz_eig(prcomp(env_C), addlabels = TRUE)
+
+#vif filtering
+vifstep(env_C, th = 10, keep = "SN_total_0_30")
+#PPT and AET have colinearity problem
+#seems to suggest to remove both, remove AET only first to check 
+
+#remove AET
+env_C$AET <- NULL
+
+cor(env_C) %>%
+  as.data.frame() %>%
+  mutate(var1 = rownames(.)) %>%
+  pivot_longer(cols = -var1, names_to = "var2", values_to = "value") %>%
+  filter(var1 != var2) %>%
+  filter(var1 < var2) %>%
+  arrange(desc(abs(value)))
+
+#check VIF of PPT
+diag(solve(cor(env_C))) #still too high 
+
+#remove PPT
+env_C$PPT <- NULL
+```
+
+Interesting, the coordinates flip directions in the leaf C subset: soil nutrients explain the first coordinate (with higher percentage of \~50%!) while the climatic variables explain the other PC. Vifstep suggests to remove both AET and PPT... If only AET is removed, PPT has no high cor values with other variables, but its VIF remains around 18 which is problematic. Hence, removing both AET and PPT as suggested.
+
+Another note is that PCA with AET removed flips horizontal direction of PPT, likely a symptom of the multicolinearity.
+
+SN still has VIF \>10, so remove SOC due to their high colinearity since we want to keep SN.
+
+```{r}
+#remove SOC
+env_C$SOC_total_0_30 <- NULL
+
+diag(solve(cor(env_C)))
+
+cor(env_C) %>%
+  as.data.frame() %>%
+  mutate(var1 = rownames(.)) %>%
+  pivot_longer(cols = -var1, names_to = "var2", values_to = "value") %>%
+  filter(var1 != var2) %>%
+  filter(var1 < var2) %>%
+  arrange(desc(abs(value)))
+```
+
+All vifs below 10. Plot relationships:
+
+```{r}
+for (env_var in colnames(env_C)) {
+
+  model <- lm(
+    as.formula(paste("leaf_C_per_dry_mass ~", env_var)),
+    data = C_data
+  )
+
+  r2 <- summary(model)$r.squared
+  p <- summary(model)$coefficients[2, 4]
+
+  print(
+    ggplot(C_data, aes(x = .data[[env_var]], y = leaf_C_per_dry_mass)) +
+      geom_point() +
+      geom_smooth(method = "lm", se = FALSE) +
+      labs(
+        x = env_var,
+        y = "leaf_C_per_dry_mass",
+        subtitle = paste0(
+          "R² = ", round(r2, 3),
+          ", p = ", signif(p, 3)
+        )
+      )
+  )
+}
+
+rm(model)
+```
+
+Relationships much subtler.
+
+**Conclusion: remove AET, PPT and SOC. Only difference with leaf N/C is that PPT is now also removed.**
+
+## N:P ratio
+
+Here the data subset is \~50% of the original dataset, corresponding to the missing values from phosphorus.
+
+```{r}
+#subset data
+NP_data <- subset(aus_data, !is.na(ln_NP_ratio))
+env_NP <- as.data.frame(NP_data[cont_predictors])
+
+#compute variable inflation factor
+diag(solve(cor(env_NP)))
+
+#correlation plot
+corrplot(cor(env_NP))
+
+cor(env_NP) %>%
+  as.data.frame() %>%
+  mutate(var1 = rownames(.)) %>%
+  pivot_longer(cols = -var1, names_to = "var2", values_to = "value") %>%
+  filter(var1 != var2) %>%
+  filter(var1 < var2) %>%
+  arrange(desc(abs(value)))
+```
+
+Problematic VIFs: SN, AET, MAT and temp_seasonality marginally. Highest correlations are the same as for leaf N and others: SN-SOC, AET-PPT, temp_seasonality-PPT.
+
+Reminder to keep some measure of phosphorus.
+
+```{r}
+#biplot
+fviz_pca_var(prcomp(env_NP), col.var = "black",repel = TRUE, title = "Env - NP ratio")
+
+#screeplot
+fviz_eig(prcomp(env_NP), addlabels = TRUE)
+
+#vif filtering
+vifstep(env_NP, th = 10, keep = "SN_total_0_30")
+
+#again, remove AET
+env_NP$AET <- NULL
+
+cor(env_NP) %>%
+  as.data.frame() %>%
+  mutate(var1 = rownames(.)) %>%
+  pivot_longer(cols = -var1, names_to = "var2", values_to = "value") %>%
+  filter(var1 != var2) %>%
+  filter(var1 < var2) %>%
+  arrange(desc(abs(value)))
+```
+
+AET was removed. Next two highest correlations involve SOC, so again remove SOC.
+
+```{r}
+#remove SOC
+env_NP$SOC_total_0_30 <- NULL
+
+diag(solve(cor(env_NP)))
+
+cor(env_NP) %>%
+  as.data.frame() %>%
+  mutate(var1 = rownames(.)) %>%
+  pivot_longer(cols = -var1, names_to = "var2", values_to = "value") %>%
+  filter(var1 != var2) %>%
+  filter(var1 < var2) %>%
+  arrange(desc(abs(value)))
+```
+
+All VIFs are under 10, correlations under 80. Plot relationships:
+
+```{r}
+for (env_var in colnames(env_NP)) {
+
+  model <- lm(
+    as.formula(paste("ln_NP_ratio ~", env_var)),
+    data = NP_data
+  )
+
+  r2 <- summary(model)$r.squared
+  p <- summary(model)$coefficients[2, 4]
+
+  print(
+    ggplot(NP_data, aes(x = .data[[env_var]], y = ln_NP_ratio)) +
+      geom_point() +
+      geom_smooth(method = "lm", se = FALSE) +
+      labs(
+        x = env_var,
+        y = "ln_NP_ratio",
+        subtitle = paste0(
+          "R² = ", round(r2, 3),
+          ", p = ", signif(p, 3)
+        )
+      )
+  )
+}
+
+rm(model)
+```
+
+As P increases, NP decreases detectable for both AP and SP which makes sense.
+
+**Conclusion: remove AET and SOC, like for leaf N and P.**
+
+## C:N ratio
+
+Data subset is 40% of observations, so should be the same missing subset as C missing data.
+
+```{r}
+#subset data
+CN_data <- subset(aus_data, !is.na(ln_CN_ratio))
+env_CN <- as.data.frame(CN_data[cont_predictors])
+
+#compute variable inflation factor
+diag(solve(cor(env_CN)))
+
+#correlation plot
+corrplot(cor(env_CN))
+
+cor(env_CN) %>%
+  as.data.frame() %>%
+  mutate(var1 = rownames(.)) %>%
+  pivot_longer(cols = -var1, names_to = "var2", values_to = "value") %>%
+  filter(var1 != var2) %>%
+  filter(var1 < var2) %>%
+  arrange(desc(abs(value)))
+```
+
+Variable with problematic VIF: AET, SN, temp_seasonality. Correlations: AET-PPT, AET-temp_seasonality, SN-SOC. Very similar to the C subset...
+
+```{r}
+#biplot
+fviz_pca_var(prcomp(env_CN), col.var = "black",repel = TRUE, title = "Env - CN Ratio") 
+
+#screeplot
+fviz_eig(prcomp(env_CN), addlabels = TRUE)
+
+#vif filtering
+vifstep(env_CN, th = 10, keep = "SN_total_0_30")
+#PPT and AET have colinearity problem
+#seems to suggest to remove both, remove AET only first to check 
+
+#remove AET
+env_CN$AET <- NULL
+
+cor(env_CN) %>%
+  as.data.frame() %>%
+  mutate(var1 = rownames(.)) %>%
+  pivot_longer(cols = -var1, names_to = "var2", values_to = "value") %>%
+  filter(var1 != var2) %>%
+  filter(var1 < var2) %>%
+  arrange(desc(abs(value)))
+
+#check VIF of PPT
+diag(solve(cor(env_CN))) #still too high for PPT
+
+#remove PPT
+env_CN$PPT <- NULL
+```
+
+Once again the coordinates flip directions with the soil nutrients explaining the first rather than the second PC, everything else is the same. AET and PPT point left, biplot with AET removed switches the direction of the PPT arrow horizontally, again symptom of multicolinearity.
+
+Remove SOC due to its high correlation with SN (0.9).
+
+```{r}
+#remove SOC
+env_CN$SOC_total_0_30 <- NULL
+
+diag(solve(cor(env_CN)))
+
+cor(env_CN) %>%
+  as.data.frame() %>%
+  mutate(var1 = rownames(.)) %>%
+  pivot_longer(cols = -var1, names_to = "var2", values_to = "value") %>%
+  filter(var1 != var2) %>%
+  filter(var1 < var2) %>%
+  arrange(desc(abs(value)))
+```
+
+All vifs below 10, still some high correlations. Plot relationships:
+
+```{r}
+for (env_var in colnames(env_CN)) {
+
+  model <- lm(
+    as.formula(paste("ln_CN_ratio ~", env_var)),
+    data = CN_data
+  )
+
+  r2 <- summary(model)$r.squared
+  p <- summary(model)$coefficients[2, 4]
+
+  print(
+    ggplot(CN_data, aes(x = .data[[env_var]], y = ln_CN_ratio)) +
+      geom_point() +
+      geom_smooth(method = "lm", se = FALSE) +
+      labs(
+        x = env_var,
+        y = "ln_CN_ratio",
+        subtitle = paste0(
+          "R² = ", round(r2, 3),
+          ", p = ", signif(p, 3)
+        )
+      )
+  )
+}
+
+rm(model)
+```
+
+Less prominent slopes as for P-associated traits.
+
+**Conclusion: remove AET, PPT and SOC, like for leaf C.**
+
+## C:P ratio
+
+This is the subset with the most missing values: 16% of the dataset.
+
+```{r}
+#subset data
+CP_data <- subset(aus_data, !is.na(ln_CP_ratio))
+env_CP <- as.data.frame(CP_data[cont_predictors])
+
+#compute variable inflation factor
+diag(solve(cor(env_CP)))
+
+#correlation plot
+corrplot(cor(env_CP))
+
+cor(env_CP) %>%
+  as.data.frame() %>%
+  mutate(var1 = rownames(.)) %>%
+  pivot_longer(cols = -var1, names_to = "var2", values_to = "value") %>%
+  filter(var1 != var2) %>%
+  filter(var1 < var2) %>%
+  arrange(desc(abs(value)))
+```
+
+Variable with problematic VIF: SN, SOC, MAT, PPT, AET (87), precip and temp_seasonality.
+
+```{r}
+#biplot
+fviz_pca_var(prcomp(env_CP), col.var = "black",repel = TRUE, title = "Env - CP Ratio")
+
+#screeplot
+fviz_eig(prcomp(env_CP), addlabels = TRUE)
+
+#vif filtering
+vifstep(env_CP, th = 10, keep = "SN_total_0_30")
+#suggests removal of AET, PPT, SOC, and temp_seasonality
+
+#remove colinear variables
+env_CP$AET <- NULL
+env_CP$PPT <- NULL
+env_CP$SOC_total_0_30 <- NULL
+env_CP$temp_seasonality <- NULL
+
+cor(env_CP) %>%
+  as.data.frame() %>%
+  mutate(var1 = rownames(.)) %>%
+  pivot_longer(cols = -var1, names_to = "var2", values_to = "value") %>%
+  filter(var1 != var2) %>%
+  filter(var1 < var2) %>%
+  arrange(desc(abs(value)))
+
+#check VIF of PPT
+diag(solve(cor(env_CP)))
+
+#PCA with selected variables
+fviz_pca_var(prcomp(env_CP), col.var = "black",repel = TRUE, title = "Env - CP Ratio")
+```
+
+PCA plot has soil nutrients in the first PC. From vifstep, remove AET, PPT, SOC, and temp_seasonality to keep VIFs below 10 and deal with multicolinearity. PCA of resulting variables has different configuration than all previous PCAs.
+
+Plot relationships:
+
+```{r}
+for (env_var in colnames(env_CP)) {
+
+  model <- lm(
+    as.formula(paste("ln_CP_ratio ~", env_var)),
+    data = CP_data
+  )
+
+  r2 <- summary(model)$r.squared
+  p <- summary(model)$coefficients[2, 4]
+
+  print(
+    ggplot(CP_data, aes(x = .data[[env_var]], y = ln_CP_ratio)) +
+      geom_point() +
+      geom_smooth(method = "lm", se = FALSE) +
+      labs(
+        x = env_var,
+        y = "ln_CP_ratio",
+        subtitle = paste0(
+          "R² = ", round(r2, 3),
+          ", p = ", signif(p, 3)
+        )
+      )
+  )
+}
+
+rm(model)
+```
+
+Detectable relationship with phosphorus as expected.
+
+**Conclusion: remove** **AET, SOC, PPT and temp_seasonality.**
+
+Save outputs of this document:
+
+```{r}
+#named list of trait and its selected variables for accessing
+selected_variables <- list(
+  "ln_leaf_N" = colnames(env_N),
+  "ln_leaf_P" = colnames(env_P),
+  "leaf_C_per_dry_mass" = colnames(env_C),
+  "ln_NP_ratio" = colnames(env_NP),
+  "ln_CN_ratio" = colnames(env_CN),
+  "ln_CP_ratio" = colnames(env_CP)
+)
+
+#saveRDS(selected_variables, file = "Results/Summer 2026 Analysis/selected_variables.rds")
+```

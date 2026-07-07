@@ -42,11 +42,6 @@ rsconnect/
 # Ignore root Results folder
 Results/
 
-# Quarto files
-.quarto/
-_quarto.yml
-*.qmd
-
 # Quarto render outputs
 _site/
 docs/
