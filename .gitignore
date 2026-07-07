@@ -41,6 +41,8 @@ rsconnect/
 */*Results/
 # Ignore root Results folder
 Results/
+# Ignore Remote work folder
+Remote/
 
 # Quarto render outputs
 _site/
