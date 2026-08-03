@@ -10,128 +10,124 @@ library(V.PhyloMaker2)
 library(httpgd)
 library(here)
 library(readr)
-
-aus_data
+library(ggtreeExtra) #installed with BiocManager
 
 httpgd::hgd() #VS code plot viewer
 hgd_browse()
 
+#rewrite so this script stands on its own. recompute phylosigs to make sure they
+#are consistent for the complete data object
+#and to have nice plots easily adaptable bc will need to do this for manu
 
-# How to use: ------------------------------------------------------------------
-#in the case we are using a new tree. Otherwise, conditionals already set up (end)
 
-#1. Get aus_data-formatted object of interest
-#       Only interested in nutrient columns: use select_relevant_columns()
+#-------------------------------Functions---------------------------------------
+select_relevant_columns <- function(df) {
+  #function for removing environmental columns
+  #in preparation for phylogenetic analysis
+  df %>%
+    select(
+      -SN_total_0_30, -SP_total_0_30, -SOC_total_0_30,
+      -CEC_total_0_30, -AP_total_0_30,
+      -NPP, -MAT, -PPT, -AET,
+      -precipitation_seasonality, -temp_seasonality
+    )
+}
 
-#2. Write tree based on that object then read it into script
-#       Prepare tree for writing using prune_prep_tree(), then write
-#       This will be done in tree derivation script
-#       Read tree as a tree tibble.
+geometric_mean <- function(x) {
+  #function for calculating geometric mean
+  #automatically excludes all NAs
+  #Important note: use this function only for untransformed data
+  #To get geometric mean of ln(ratio) data, use normal mean() function
+  exp(mean(log(x), na.rm = TRUE))
+}
 
-#3. Data entry - Add CV columns and get nutrient averages for aus_data object
-#       Using add_CV_columns() then average_nutrient_data() on aus_data-obj
-#       Note -  to prep all in one go, use:
-#       select_relevant_columns(average_nutrient_data(add_CV_columns(aus_data))
+average_nutrient_data <- function(df) {
+  #function to average aus_data object nutrients and ratios
+  #ratios averaged arithmetically and geometrically
+  #note that only untransformed ratios should be averaged geometrically
+  
+  #avg = NaN means all entries for that species NA
+  #species with one observation will have same value 
+  nutrient_averaged_df <- df %>%
+    
+    group_by(species_binom) %>%
+    
+    summarize(
+      avg_leaf_N = mean(leaf_N_per_dry_mass, na.rm = TRUE),
+      avg_leaf_C = mean(leaf_C_per_dry_mass, na.rm = TRUE),
+      avg_leaf_P = mean(leaf_P_per_dry_mass, na.rm = TRUE),
+      avg_ar_NP_ratio = mean(NP_ratio, na.rm = TRUE),
+      avg_ar_CN_ratio = mean(CN_ratio, na.rm = TRUE),
+      avg_ar_CP_ratio = mean(CP_ratio, na.rm = TRUE),
+      avg_geo_NP_ratio = geometric_mean(NP_ratio),
+      avg_geo_CN_ratio = geometric_mean(CN_ratio),
+      avg_geo_CP_ratio = geometric_mean(CP_ratio),
+      
+      #keep all columns, without this will get rid of the rest
+      across(-c(leaf_N_per_dry_mass,leaf_C_per_dry_mass, leaf_P_per_dry_mass,
+                NP_ratio, CN_ratio, CP_ratio),
+             ~ first(.), .names = "{.col}")
+    ) %>%
+    ungroup() %>%
+    #relocate all "avg_"columns to the right
+    relocate(starts_with("avg_"), starts_with("geo_"), .after = last_col())
+  
+  #remove irrelevant unique ID column
+  nutrient_averaged_df <- nutrient_averaged_df %>% select(-Unique_ID)
+  
+  return(nutrient_averaged_df)
+}
 
-#4. Merge trait data with tree tib object to compute signal
-#       Using add_tree_traits()
-#       Look at final object to determine row when trait data ends to determine
-#       "cut" value for next step.
+add_tree_traits <- function(tree_tib, avg_sp_data) {
+  #merging tree tib with trait data
+  #written for getting phylo signal
+  #avg_sp_data input = output of average_nutrient_data function
+  merged_tib <- left_join(tree_tib, avg_sp_data, by = c("label" = "species_binom"))
+  
+  return(merged_tib)
+}
 
-#5. Get trait values as named numerical vector, then compute signal
-#      Use extract_trait_values() with "label" and "trait" unless otherwise specfied
-#      as well as unique "cut" value previously determined
-#      compute signal using phylosig()
+extract_trait_values <- function(tree_tib, label_col, trait_col, cut) {
+  # trait data must be in same order as label in tree
+  # tree_tib: tree tibble object with associated trait data
+  # label_col: name of the column that contains name of tip.labels from tree
+  # trait_col: name of the column that has trait value of interest
+  # cut: number of rows to keep from tree_tib
+  
+  # cut the tibble to the specified number of rows
+  cut_tree_tib <- tree_tib %>%
+    slice(1:cut)  #to ensure vector only includes nutrient values, not internal node info
+  
+  labels <- cut_tree_tib[[label_col]]
+  traits <- cut_tree_tib[[trait_col]]
+  
+  trait_values <- setNames(as.numeric(traits), labels)
+  #returns named numeric vector, of column of interest in the order 
+  #of input of tree_tib
+  return(trait_values)
+}
 
 #------------------------------Data Entry---------------------------------------
 
-# all pos sp data entry ----
-#this is for tree with total resolved species, no uncertain nodes
-ausdata_all_pos_sp_tree <- read.tree("Inputs/Trees/ausdata_all_pos_sp.tre")
-ausdata_all_pos_sp_df <- read_csv('Inputs/all_pos_austraits_LCVP_sp.csv')
+aus_data <- read_csv(file = "Inputs/aus_data2026.csv") 
 
-all_pos_sp_data <- aus_data[aus_data$species_binom %in%
-                              ausdata_all_pos_sp_df$species, ]
+#remove extra column
+aus_data <- aus_data[,-1]
 
-#all_pos_sp_data <- add_CV_columns(select_relevant_columns(all_pos_sp_data))
-avg_all_pos_sp_data <- average_nutrient_data(select_relevant_columns(all_pos_sp_data))
-
-
-ausdata_all_pos_sp_tree_tib <- as_tibble(ausdata_all_pos_sp_tree)
-ausdata_all_pos_sp_tree_tib <- add_tree_traits(ausdata_all_pos_sp_tree_tib,
-                                                    avg_all_pos_sp_data)
-
-rm(ausdata_all_pos_sp_df, all_pos_sp_data)
-# end of all pos sp data entry
-
-
-# ausdata data entry ----
 ausdata_tree <- read.tree(here("Inputs/Trees/ausdata.tre"))
-aus_data
-#following line no longer needed, as relevant variation columns
-#already in aus_data csv
-#ausdata_nut <- add_var_columns(select_relevant_columns(aus_data))
+
+#add column of sample size per species to aus_data
+aus_data <- aus_data %>%
+  group_by(species_binom) %>%
+  mutate(sp_n = n()) %>%
+  ungroup()
+
+#average leaf nutrients, remove environmental columns
 avg_ausdata <- average_nutrient_data(select_relevant_columns(aus_data))
 
+#create tree tibble, merge with trait data
 ausdata_tree_tib <- as_tibble(ausdata_tree)
 ausdata_tree_tib <- add_tree_traits(ausdata_tree_tib, avg_ausdata)
-
-rm(ausdata_nut, avg_ausdata)
-# end of ausdata data entry
-
-# fab tree only entry
-
-fab_tree <- read.tree(here("Inputs/Trees/fab.tre"))
-fab_data <- aus_data %>% subset(family == "Fabaceae")
-#variation columns already included
-avg_fabdata <- average_nutrient_data(select_relevant_columns(aus_data))
-
-fab_tree_tib <- as_tibble(fab_tree)
-fab_tree_tib <- add_tree_traits(fab_tree_tib, avg_fabdata)
-
-write.csv(fab_tree_tib, file = "fab_tree_tib.csv")
-
-# pruned tree data entry ----
-auspruned_three_tree <- read.tree(here("Inputs/Trees/austraits_pruned_three.tre"))
-
-pruned_ausdata_three <- prune_ausdata(aus_data, 3)
-
-pruned_three_data <- add_CV_columns(select_relevant_columns(pruned_ausdata_three))
-
-avg_pruned_three_data <- average_nutrient_data(pruned_three_data)
-
-pruned_three_tree_tib <- as_tibble(auspruned_three_tree)
-pruned_three_tree_tib <- add_tree_trait(pruned_three_tree_tib,
-                                        avg_pruned_three_data)
-# end of pruned tree data entry
-
-
-# no gymn tree data entry ----
-nogymn_tree <-read.tree(here("Inputs/Trees/no_gymnosperm_tree.tre"))
-ausdata_no_gymn #from 001 Data Exploration
-ausdata_no_gymn <- add_CV_columns(select_relevant_columns(ausdata_no_gymn))
-avg_no_gymn <- average_nutrient_data(ausdata_no_gymn)
-
-nogymn_tree_tib <- as_tibble(nogymn_tree)
-nogymn_tree_tib <- add_tree_traits(nogymn_tree_tib, avg_no_gymn)
-# end of no gymn data entry
-
-
-# ITS tree data entry ----
-ITS_tree <- read.nexus("Inputs/Trees/ITS_tree.tre")
-ITS_tree_tib <- as_tibble(ITS_tree)
-
-ITS_sp_data <- aus_data[aus_data$species_binom %in%
-                              ITS_tree_tib$label, ]
-
-ITS_sp_data <- select_relevant_columns((ITS_sp_data))
-
-ITS_sp_data <- add_CV_columns(ITS_sp_data)
-avg_ITS_sp_data <- average_nutrient_data(ITS_sp_data)
-
-ITS_tree_tib <- add_tree_traits(ITS_tree_tib, avg_ITS_sp_data)
-# end of ITS tree data entry
-
 
 #-------------------------------------------------------------------------------
 
@@ -146,139 +142,109 @@ tree$node.label <- NULL
 
 #for the following, need phylo object and dataframe associated with it
 
-#horizontal base
-ausdata_plot <- ggtree(ausdata_tree) + geom_tiplab(size = 0.5)
+#basic horizontal base ---- 
+base_plot <- ggtree(ausdata_tree) + geom_tiplab(size = 0.5)
 
-#most basic, no coloring, horizontal bar plot
-ausdata_plot + geom_facet(
-  panel = 'Trait',
-  data = avg_all_pos_sp_data,
-  geom = geom_col,
-  mapping = aes(x = CV_C),
-  orientation = "y") +
-  ggtitle("CV_C, Tree with Uncertainties") +
-  theme(plot.title = element_text(size = 20))
-
-#try to color continously by trait
-#syntax used: but we dont have trait data to match on phylo object... 
-#must link using treeio, full_join() method
-
-
-#-- Linkage of data to phylo object with treeio
-#need info df with column "label" then trait data as columns
-names(avg_all_pos_sp_data)[1] <- "label"
-attemptree <- full_join(as.treedata(ausdata_all_pos_sp_tree),
-                        avg_all_pos_sp_data, by = "label")
-attemptree #tree object with nutrient data associated
-View(as.tibble(attemptree))
-get.data(attemptree) #to extract data from phylo
-  
-ggtree(attemptree, aes(color = avg_leaf_N)) +
-  scale_color_continuous(low = "yellow", high = "magenta") +
-  geom_tiplab(size = 0.5, color = "black")
-
-#only plots existing values
-#use this since one color per branch
-ggtree(attemptree, aes(color = avg_leaf_N), layout = "circular") +
-  scale_color_continuous(low = "#6ad1f3", high = "#ee6b00") +
-  geom_tiplab(size = 0.5) #can manually set to black if needed
-
-#trying sept 1st-----
+#plotting continuous coloring with ggtree
 treedata <- as.treedata(ausdata_tree_tib)
 
 ggtree(treedata, aes(color = avg_leaf_N), layout = "circular") +
   scale_color_continuous(low = "#6ad1f3", high = "#ee6b00") +
   geom_tiplab(size = 0.5)
 
-#by category!!
+#plotting by category with ggtree
 ggtree(treedata, aes(color = myc_type), layout = "circular") +
   geom_tiplab(size = 0.5) +
   scale_color_brewer(palette = "Dark2") +
   theme(legend.position = "right") +
   labs(color = "Mycorrhizal type", shape = "Mycorrhizal type")
 
-ggtree(treedata, aes(color = reclass_life_history), layout = "circular") +
-  geom_tiplab(size = 0.5) +
-  scale_color_brewer(palette = "Dark2") +
-  theme(legend.position = "right") +
-  labs(color = "Life History", shape = "Life History")
-
-ggtree(treedata, aes(color = factor(woodiness)), layout = "circular") +
-  geom_tiplab(size = 0.5) +
-  scale_color_brewer(palette = "Dark2") +
-  theme(legend.position = "right") +
-  labs(color = "Woodiness", shape = "Woodiness")
-
-ggtree(treedata, aes(color = factor(putative_BNF)), layout = "circular") +
-  geom_tiplab(size = 0.5) +
-  scale_color_brewer(palette = "Dark2") +
-  theme(legend.position = "right") +
-  labs(color = "Nitrogen fixer", shape = "Nitrogen fixer")
-
-#to label clades 
-#https://yulab-smu.top/treedata-book/chapter5.html#layers-for-tree-annotation
-#need to label internal nodes to use cladelab()
-attemptree #829 tips, 828 internal nodes
-
 #circular base
-all_pos_sp_circular_plot <- ggtree(ausdata_all_pos_sp_tree, layout = "circular",
-                                   branch.length = "none")+ ggtitle("All Pos. Sp.")
+circular_plot <- ggtree(ausdata_tree, layout = "circular", 
+                        branch.length = "branch.length")
 
 #most basic, no coloring circular bar plot
-all_pos_sp_circular_plot + geom_fruit(
-  data = avg_all_pos_sp_data,
+circular_plot + geom_fruit(
+  data = avg_ausdata,
   geom = geom_bar,
   mapping = aes(x = avg_leaf_N, y = species_binom),
   orientation = "y",
   stat = "identity") + ggtitle("Average Leaf N")
+
+#want to plot sample size on tips of trees
+ggtree(treedata, layout = "circular", color = "grey30",size = 0.1) +
+  geom_fruit(geom = geom_col,
+    mapping = aes(y = label, x = sp_n)) #ugh finally
+
+#consider this list:
+species_observations <- species %>%
+  group_by(Freq) %>%
+  summarize(
+    species_count = n(),
+    species_list = list(toString(species_binom))
+  ) %>%
+  ungroup()
+
+#red for freq 1, orange for freq 2, yellow for freq3, 
+#4-6 green, #7-10 blue
+#10-20, then 20-30, then 30-477 
+treedata@data <- treedata@data %>%
+  mutate(
+    sample_bin = case_when(
+      sp_n == 1 ~ "1",
+      sp_n == 2 ~ "2",
+      sp_n == 3 ~ "3",
+      sp_n >= 4  & sp_n <= 6  ~ "4–6",
+      sp_n >= 7  & sp_n <= 10 ~ "7–10",
+      sp_n >= 11 & sp_n <= 20 ~ "11–20",
+      sp_n >= 21 & sp_n <= 30 ~ "21–30",
+      sp_n > 30 ~ "31+"
+    ),
+    sample_bin = factor(
+      sample_bin,
+      levels = c("1", "2", "3", "4–6", "7–10", "11–20", "21–30", "31+")
+    )
+  )
+
+#sample size as circles, not ideal
+ggtree(treedata, layout = "circular", color = "grey30", size = 0.1) +
+  geom_tippoint(aes(fill = sample_bin), shape = 21,
+                size = 1.2,color = "black", stroke = 0.1) +
+  scale_fill_manual(name = "Sample size",
+    values = c("1" = "red","2" = "orange","3" = "yellow","4–6" = "green",
+      "7–10" = "blue", "11–20" = "purple", "21–30" = "brown", "31+" = "black"))
+
+ggtree(treedata, layout = "circular",
+       color = "grey40", linewidth = 0.1) + #tree base
+  geom_fruit(geom = geom_col, mapping = aes(y = label, x = sample_bin, fill = sample_bin),
+  ) +
+  scale_fill_manual(
+    name = "Frequency of Observations",
+    values = c("1"     = "#d73027","2" = "#fc8d59","3"= "#fee08b",
+      "4–6"   = "#91cf60","7–10"  = "#1a9850","11–20" = "#4575b4",
+      "21–30" = "#542788", "31+"   = "#000000")) #these are bins, not absolute values...
+
+#these are absolute values but... the corymbia obviously sets everything apart
+ggtree(treedata, layout = "circular",
+       color = "grey40", linewidth = 0.1) + #tree base
+  geom_fruit(
+    geom = geom_col,
+    mapping = aes(y = label,
+                  x = sp_n,
+                  fill = sp_n))
 
 
 #------------------------Phylogenetic Signal------------------------------------
 
 # 1. Pick tree, input as string. Options:
 
-# "ITS_tree", cut = 105
-# "ausdata_all_pos_sp", cut = 831, species-level
-# "pruned_three", cut = 473
 # "ausdata", cut = 1414, unresolved nodes
 # Note that cut is inclusive i.e. up to and including
 
 tree_tib <- "ausdata"
-
-#write conditionals into function
-
-if (tree_tib== "ausdata") {
-  cut = 1414
-  tree_tib = ausdata_tree_tib
-  tree = ausdata_tree
-}
-
-if (tree_tib == "ausdata_all_pos_sp") {
-  cut = 829
-  tree_tib = ausdata_all_pos_sp_tree_tib
-  tree = ausdata_all_pos_sp_tree
-}
-
-#derived from complete ausdata
-if (tree_tib == "nogymn") {
-  cut = 1403
-  tree_tib = nogymn_tree_tib
-  tree = nogymn_tree
-}
-
-if (tree_tib == "pruned_three") {
-  cut = 473
-  tree_tib = pruned_three_tree_tib
-  tree = auspruned_three_tree
-}
-
-#earliest tree
-if (tree_tib == "ITS_tree") {
-  cut = 105
-  tree_tib = ITS_tree_tib
-  tree = ITS_tree
-}
-
+cut = 1414
+tree_tib = ausdata_tree_tib
+tree = ausdata_tree
 
 # 2. Write in trait of interest as string. Options:
 
@@ -287,7 +253,7 @@ if (tree_tib == "ITS_tree") {
 # avg_ar_NP_ratio, avg_ar_CN_ratio or avg_ar_CP_ratio
 # avg_geo_NP_ratio, avg_geo_CN_ratio, avg_geo_CP_ratio
 
-trait <- "avg_geo_NP_ratio"
+trait <- "ln_leaf_N"
 
 # 3. Use extract_trait_values() on tree tib to get values of interest
 
@@ -295,6 +261,17 @@ trait_data <- extract_trait_values(tree_tib, "label", trait, cut)
 logged_trait_data <- log(trait_data)
 
 # 4. Get signals
+
+#---lambda
+lambda <- phylosig(tree, trait_data, method = "lambda", test = TRUE)
+print(lambda)
+plot(lambda)
+
+loglambda_signal <- phylosig(tree, logged_trait_data,
+                             method = "lambda", test = TRUE)
+print(loglambda_signal)
+
+#---bloomberg's K
 K_signal <- phylosig(tree, trait_data, method = "K", nsim = 10000, test = TRUE)
 print(K_signal)
 quantile(K_signal$sim.K,c(0.05,0.95))
@@ -304,18 +281,22 @@ logK_signal <- phylosig(tree, logged_trait_data, method = "K", nsim = 10000, tes
 print(logK_signal)
 plot(logK_signal)
 
-lambda <- phylosig(tree, trait_data, method = "lambda", test = TRUE)
-#phylosig(se = ), from Ellie's code
-#can set se manually = to value per species! 
-print(lambda)
-plot(lambda)
+#alternatively:
+ausdata_tree_tib <- ausdata_tree_tib %>%
+  slice(1:1414)
 
-loglambda_signal <- phylosig(tree, logged_trait_data,
-                             method = "lambda", test = TRUE)
-print(loglambda_signal)
+lambda2 <- phylosig(ausdata_tree, x = ausdata_tree_tib$ln_leaf_N,
+                   method = "lambda", test = TRUE)
+#gives the same value, but will use the named numeric vector version
+#just in case
 
 
-#---- investigation into differences between K and lambda
+#-------------------------------------------------------------------------------
+#https://blog.phytools.org/2022/06/follow-up-on-sensitivity-of-blombergs-k.html 
+#also consider:https://www.carlboettiger.info/2013/10/11/is-it-time-to-retire-pagels-lambda.html
+
+#investigation into differences between K and lambda
+
 #One trick that could help us understand this apparent contradiction
 #a bit better is to see what happens when we transform our second tree
 #by the MLE of λ for that tree, and then compute K on the transformed tree
@@ -331,128 +312,3 @@ lambda2 <- phylosig(ausdata_tree, x = ausdata_tree_tib$avg_geo_NP_ratio,
 #get K for tree corrected by lambda MLE for that tree
 phylosig(phytools:::lambdaTree(ausdata_tree,lambda2),ausdata_tree_tib$avg_geo_NP_ratio)
 #suddently K is so much higher !!! what :3
-
-
-#try ellie's method ----------
-#just use one dataframe that has phylo (branch lengths), trait data, and SE 
-ausdata_tree_tib <- ausdata_tree_tib %>%
-  slice(1:1414)
-
-
-lambda <- phylosig(ausdata_tree, x = ausdata_tree_tib$avg_geo_NP_ratio,
-                   method = "lambda", test = TRUE)
-#if you include se per species, given that not all of them have more than one observation
-#get singular variance covariance matrix
-
-
-#get seperate signals for distinct myc types: divide EM and AM
-ausdata_tree_tib <- ausdata_tree_tib %>%
-  slice(1:1414)
-
-
-#----------
-?phylANOVA
-
-sp <- ausdata_tree$tip.label
-#get named numeric vectors
-x <- setNames(aus_data$myc_type[match(sp, aus_data$species_binom)], sp)
-y <- setNames(aus_data$leaf_N_per_dry_mass[match(sp, aus_data$species_binom)], sp)
-
-# run phylANOVA
-phylANOVA(ausdata_tree, x, y)
-
-phylANOVA(ausdata_tree, x = aus_data$myc_type,
-          y = aus_data$leaf_N_per_dry_mass)
-
-anova <- aov(leaf_N_per_dry_mass ~ myc_type, data = aus_data)
-summary(anova)
-#pre-lim thoughts: check that everything is set up correctly (trait order)
-#but seems like ANOVA significant in detecting difs b/w myc_type
-#but phylANOVA doesnt ... so these differences once evolutionary history taken into account
-#dont exist across myc types
-
-
-#-------
-?phyl.pca
-#can only take one value per species
-avg_ausdata <- as.data.frame(avg_ausdata)
-row.names(avg_ausdata) <- avg_ausdata$species_binom
-ausdata_tree
-
-# 2. Drop the species column, keep only nutrients
-nutrient_matrix <- avg_ausdata[, c("avg_leaf_N", "avg_leaf_P", "avg_leaf_C")]
-nutrient_matrix <- na.omit(nutrient_matrix)
-
-# 3. Scale (center + standardize) each nutrient column
-Y <- scale(nutrient_matrix)
-
-
-pca <- phyl.pca(tree = ausdata_tree, Y, method = "lambda", mode = "cov")
-pca
-
-
-#try and plot by myc_type
-scores <- as.data.frame(pca$S)   # species x PCs
-scores$species <- rownames(scores)
-
-plot_data <- merge(scores,
-                   avg_ausdata[, c("species_binom", "myc_type")],
-                   by.x = "species", by.y = "species_binom")
-
-ggplot(plot_data, aes(x = PC1, y = PC2, color = myc_type)) +
-  geom_point(size = 3) +
-  stat_ellipse(aes(group = myc_type), linetype = 2) +  # circles around groups
-  theme_minimal() +
-  labs(x = "PC1", y = "PC2",
-       title = "Phylogenetic PCA of Leaf Nutrients") +
-  theme(legend.position = "right")
-
-plot_data <- na.omit(plot_data)
-adonis_res <- adonis2(plot_data[, c("PC1", "PC2", "PC3")] ~ myc_type,
-                      data = plot_data, method = "euclidean")
-adonis_res
-
-disp <- betadisper(
-  dist(plot_data[, c("PC1", "PC2", "PC3")]),
-  group = plot_data$myc_type
-)
-anova(disp)
-
-TukeyHSD(disp)
-plot(disp) 
-
-#unconstrained RDA = PCA
-pca_raw <- vegan::rda(Y)
-pca_raw
-
-library(vegan)
-library(ggplot2)
-
-# 1. Extract site scores (species)
-scores_sites <- as.data.frame(vegan::scores(pca_raw, display = "sites"))
-scores_sites$species <- rownames(scores_sites)
-
-# 2. Extract variable scores (nutrient loadings)
-scores_vars <- as.data.frame(vegan::scores(pca_raw, display = "species"))
-scores_vars$nutrient <- rownames(scores_vars)
-
-# 3. Merge site scores with metadata
-plot_data <- merge(scores_sites,
-                   avg_ausdata[, c("species_binom", "myc_type")],
-                   by.x = "species", by.y = "species_binom")
-
-# 4. Plot PCA
-ggplot(plot_data, aes(x = PC1, y = PC2, color = myc_type)) +
-  geom_point(size = 3) +
-  stat_ellipse(aes(group = myc_type), linetype = 2) +
-  geom_segment(data = scores_vars,
-               aes(x = 0, y = 0, xend = PC1, yend = PC2),
-               arrow = arrow(length = unit(0.2, "cm")),
-               inherit.aes = FALSE, color = "black") +
-  geom_text(data = scores_vars,
-            aes(x = PC1, y = PC2, label = nutrient),
-            inherit.aes = FALSE, vjust = -0.5) +
-  theme_minimal() +
-  labs(title = "PCA of Leaf Nutrients (vegan::rda)",
-       x = "PC1", y = "PC2")
-#uhhh kinda looks the same ?
