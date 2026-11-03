@@ -1,0 +1,987 @@
+---
+title: "ANOVAs"
+format: html
+editor: visual
+---
+
+## CDA ANOVAs
+
+If second assumption fails, use welsh's t-test which is the default for t.test function regardless.
+
+Assumptions of welsh t-test: a) normality of data, b) homoscedasticity (variance of two samples equal)
+
+```{r}
+library(tidyverse)
+library(car)
+library(broom)
+
+#read in data
+setwd("~/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich")
+aus_data <- read_csv(file = "Inputs/aus_data2026.csv")
+
+#save results in one tibble after each test:
+test_results <- tibble()
+```
+
+## putative_BNF
+
+Since it only has two levels, use t.test.
+
+### ln_leaf_N
+
+```{r}
+#check normality assumption
+par(mfrow = c(1, 2))
+hist(filter(aus_data, putative_BNF ==1)$ln_leaf_N, main = "leaf N BNF 1")
+hist(filter(aus_data, putative_BNF ==0)$ln_leaf_N, main = "leaf N BNF 0")
+
+qqnorm(filter(aus_data, putative_BNF == 1)$ln_leaf_N, main ="leaf N 1")
+qqline(filter(aus_data, putative_BNF == 1)$ln_leaf_N, col = "red")
+
+qqnorm(filter(aus_data, putative_BNF == 0)$ln_leaf_N, main = "leaf N 0")
+qqline(filter(aus_data, putative_BNF == 0)$ln_leaf_N, col = "red")
+
+#check assumption of equal variance
+var.test(ln_leaf_N ~ putative_BNF, data = aus_data) 
+bartlett.test(ln_leaf_N ~ putative_BNF, data = aus_data)
+leveneTest(ln_leaf_N ~ factor(putative_BNF), data = aus_data)
+
+#do test
+BNF_leafN_t_test <- t.test(data = aus_data, ln_leaf_N ~ putative_BNF, var.equal = FALSE)
+
+print(BNF_leafN_t_test)
+```
+
+Variances unequal, so use welsh specifically with var.equal = FALSE. Significant difference.
+
+Save test using tidy:
+
+```{r}
+test_results <- BNF_leafN_t_test %>% 
+  tidy() %>% 
+  mutate(test_source = "BNF_leaf_N") %>% 
+  bind_rows(test_results, . )
+```
+
+### ln_leaf_P
+
+```{r}
+#check normality assumption
+par(mfrow = c(1, 2))
+hist(filter(aus_data, putative_BNF ==1)$ln_leaf_P, main = "leaf P BNF 1")
+hist(filter(aus_data, putative_BNF ==0)$ln_leaf_P, main = "leaf P BNF 0")
+
+qqnorm(filter(aus_data, putative_BNF == 1)$ln_leaf_P, main ="leaf P 1")
+qqline(filter(aus_data, putative_BNF == 1)$ln_leaf_P, col = "red")
+
+qqnorm(filter(aus_data, putative_BNF == 0)$ln_leaf_P, main = "leaf P 0")
+qqline(filter(aus_data, putative_BNF == 0)$ln_leaf_P, col = "red")
+
+#check assumption of equal variance
+var.test(ln_leaf_P ~ putative_BNF, data = aus_data) 
+bartlett.test(ln_leaf_P ~ putative_BNF, data = aus_data)
+leveneTest(ln_leaf_P ~ factor(putative_BNF), data = aus_data)
+
+#do test
+BNF_leafP_t_test <- t.test(data = aus_data, ln_leaf_P ~ putative_BNF, var.equal = FALSE)
+
+print(BNF_leafP_t_test)
+```
+
+Different variances, significant difference, use Welch t-test.
+
+```{r}
+test_results <- BNF_leafP_t_test %>% 
+  tidy() %>% 
+  mutate(test_source = "BNF_leaf_P") %>% 
+  bind_rows(test_results, . )
+```
+
+### leaf C
+
+```{r}
+#check normality assumption
+par(mfrow = c(1, 2))
+hist(filter(aus_data, putative_BNF ==1)$leaf_C_per_dry_mass, main = "leaf C BNF 1")
+hist(filter(aus_data, putative_BNF ==0)$leaf_C_per_dry_mass, main = "leaf C BNF 0")
+
+qqnorm(filter(aus_data, putative_BNF == 1)$leaf_C_per_dry_mass, main ="leaf C 1")
+qqline(filter(aus_data, putative_BNF == 1)$leaf_C_per_dry_mass, col = "red")
+
+qqnorm(filter(aus_data, putative_BNF == 0)$leaf_C_per_dry_mass, main = "leaf C 0")
+qqline(filter(aus_data, putative_BNF == 0)$leaf_C_per_dry_mass, col = "red")
+
+#check assumption of equal variance
+var.test(leaf_C_per_dry_mass ~ putative_BNF, data = aus_data) 
+bartlett.test(leaf_C_per_dry_mass ~ putative_BNF, data = aus_data)
+leveneTest(leaf_C_per_dry_mass ~ factor(putative_BNF), data = aus_data)
+
+#do test
+BNF_leafC_t_test <- t.test(data = aus_data, leaf_C_per_dry_mass ~ putative_BNF, var.equal = FALSE)
+
+print(BNF_leafC_t_test)
+```
+
+Variances unequal. Use welsh t-test.
+
+Distribution of leaf C with nitrogen fixation skewed:
+
+```{r}
+#further test for normality:
+shapiro.test(filter(aus_data, putative_BNF ==1)$leaf_C_per_dry_mass)
+shapiro.test(filter(aus_data, putative_BNF ==0)$leaf_C_per_dry_mass)
+```
+
+Deviance from 1 isn't that huge, but definitely noticeable for fixers and leaf C. However qqnorm looks fine. Proceed with test:
+
+```{r}
+test_results <- BNF_leafC_t_test %>% 
+  tidy() %>% 
+  mutate(test_source = "BNF_leaf_C") %>% 
+  bind_rows(test_results, . )
+```
+
+### ln_NP_ratio
+
+```{r}
+#check normality assumption
+par(mfrow = c(1, 2))
+hist(filter(aus_data, putative_BNF ==1)$ln_NP_ratio, main = "ln NP BNF 1")
+hist(filter(aus_data, putative_BNF ==0)$ln_NP_ratio, main = "ln NP BNF 0")
+
+qqnorm(filter(aus_data, putative_BNF == 1)$ln_NP_ratio, main ="ln NP 1")
+qqline(filter(aus_data, putative_BNF == 1)$ln_NP_ratio, col = "red")
+
+qqnorm(filter(aus_data, putative_BNF == 0)$ln_NP_ratio, main = "ln NP 0")
+qqline(filter(aus_data, putative_BNF == 0)$ln_NP_ratio, col = "red")
+
+#check assumption of equal variance
+var.test(ln_NP_ratio ~ putative_BNF, data = aus_data) 
+bartlett.test(ln_NP_ratio ~ putative_BNF, data = aus_data)
+leveneTest(ln_NP_ratio ~ factor(putative_BNF), data = aus_data)
+
+#do test
+BNF_lnNP_t_test <- t.test(data = aus_data, ln_NP_ratio ~ putative_BNF, var.equal = FALSE)
+
+print(BNF_lnNP_t_test)
+```
+
+Distributions slightly skewed. Variances unequal. Use welsh t-test.
+
+```{r}
+test_results <- BNF_lnNP_t_test %>% 
+  tidy() %>% 
+  mutate(test_source = "BNF_lnNP") %>% 
+  bind_rows(test_results, . )
+```
+
+### ln_CN_ratio
+
+```{r}
+#check normality assumption
+par(mfrow = c(1, 2))
+hist(filter(aus_data, putative_BNF ==1)$ln_CN_ratio, main = "ln CN BNF 1")
+hist(filter(aus_data, putative_BNF ==0)$ln_CN_ratio, main = "ln CN BNF 0")
+
+qqnorm(filter(aus_data, putative_BNF == 1)$ln_CN_ratio, main ="ln CN 1")
+qqline(filter(aus_data, putative_BNF == 1)$ln_CN_ratio, col = "red")
+
+qqnorm(filter(aus_data, putative_BNF == 0)$ln_CN_ratio, main = "ln CN 0")
+qqline(filter(aus_data, putative_BNF == 0)$ln_CN_ratio, col = "red")
+
+#check assumption of equal variance
+var.test(ln_CN_ratio ~ putative_BNF, data = aus_data) 
+bartlett.test(ln_CN_ratio ~ putative_BNF, data = aus_data)
+leveneTest(ln_CN_ratio ~ factor(putative_BNF), data = aus_data)
+
+#do test
+BNF_lnCN_t_test <- t.test(data = aus_data, ln_CN_ratio ~ putative_BNF, var.equal = FALSE)
+
+print(BNF_lnCN_t_test)
+```
+
+Heavy lower tail for ln CN nitrogen fixer. Variances unequal. Use welsh t-test.
+
+```{r}
+test_results <- BNF_lnCN_t_test %>% 
+  tidy() %>% 
+  mutate(test_source = "BNF_lnCN") %>% 
+  bind_rows(test_results, . )
+```
+
+### ln_CP_ratio
+
+```{r}
+#check normality assumption
+par(mfrow = c(1, 2))
+hist(filter(aus_data, putative_BNF ==1)$ln_CP_ratio, main = "ln CP BNF 1")
+hist(filter(aus_data, putative_BNF ==0)$ln_CP_ratio, main = "ln CP BNF 0")
+
+qqnorm(filter(aus_data, putative_BNF == 1)$ln_CP_ratio, main ="ln CP 1")
+qqline(filter(aus_data, putative_BNF == 1)$ln_CP_ratio, col = "red")
+
+qqnorm(filter(aus_data, putative_BNF == 0)$ln_CP_ratio, main = "ln CP 0")
+qqline(filter(aus_data, putative_BNF == 0)$ln_CP_ratio, col = "red")
+
+#check assumption of equal variance
+var.test(ln_CP_ratio ~ putative_BNF, data = aus_data) 
+bartlett.test(ln_CP_ratio ~ putative_BNF, data = aus_data)
+leveneTest(ln_CP_ratio ~ factor(putative_BNF), data = aus_data)
+
+#do test
+BNF_lnCP_t_test <- t.test(data = aus_data, ln_CP_ratio ~ putative_BNF, var.equal = FALSE)
+
+print(BNF_lnCP_t_test)
+```
+
+Distributions relatively normal. Variances unequal. Use welsh t-test.
+
+```{r}
+test_results <- BNF_lnCP_t_test %>% 
+  tidy() %>% 
+  mutate(test_source = "BNF_lnCP") %>% 
+  bind_rows(test_results, . )
+```
+
+## woodiness
+
+### ln_leaf_N
+
+```{r}
+#check normality assumption
+par(mfrow = c(1, 2))
+hist(filter(aus_data, woodiness ==1)$ln_leaf_N, main = "leaf N woodiness 1")
+hist(filter(aus_data, woodiness ==0)$ln_leaf_N, main = "leaf N woodiness 0")
+
+qqnorm(filter(aus_data, woodiness == 1)$ln_leaf_N, main ="leaf N 1")
+qqline(filter(aus_data, woodiness == 1)$ln_leaf_N, col = "red")
+
+qqnorm(filter(aus_data, woodiness == 0)$ln_leaf_N, main = "leaf N 0")
+qqline(filter(aus_data, woodiness == 0)$ln_leaf_N, col = "red")
+
+#check assumption of equal variance
+var.test(ln_leaf_N ~ woodiness, data = aus_data) 
+bartlett.test(ln_leaf_N ~ woodiness, data = aus_data)
+leveneTest(ln_leaf_N ~ factor(woodiness), data = aus_data)
+
+#do test
+woodiness_leafN_t_test <- t.test(data = aus_data, ln_leaf_N ~ woodiness, var.equal = FALSE)
+
+print(woodiness_leafN_t_test)
+```
+
+Variances unequal, use welsh t-test.
+
+```{r}
+test_results <- woodiness_leafN_t_test %>% 
+  tidy() %>% 
+  mutate(test_source = "woodiness_leaf_N") %>% 
+  bind_rows(test_results, . )
+```
+
+### ln_leaf_P
+
+```{r}
+#check normality assumption
+par(mfrow = c(1, 2))
+hist(filter(aus_data, woodiness ==1)$ln_leaf_P, main = "leaf P woodiness 1")
+hist(filter(aus_data, woodiness ==0)$ln_leaf_P, main = "leaf P wooediness 0")
+
+qqnorm(filter(aus_data, woodiness == 1)$ln_leaf_P, main ="leaf P 1")
+qqline(filter(aus_data, woodiness == 1)$ln_leaf_P, col = "red")
+
+qqnorm(filter(aus_data, woodiness == 0)$ln_leaf_P, main = "leaf P 0")
+qqline(filter(aus_data, woodiness == 0)$ln_leaf_P, col = "red")
+
+#check assumption of equal variance
+var.test(ln_leaf_P ~ woodiness, data = aus_data) 
+bartlett.test(ln_leaf_P ~ woodiness, data = aus_data)
+leveneTest(ln_leaf_P ~ factor(woodiness), data = aus_data)
+
+#do test
+woodiness_leafP_t_test <- t.test(data = aus_data, ln_leaf_P ~ woodiness, var.equal = FALSE)
+
+print(woodiness_leafP_t_test)
+```
+
+Unequal variances, use welsh t-test.
+
+```{r}
+test_results <- woodiness_leafP_t_test %>% 
+  tidy() %>% 
+  mutate(test_source = "woodiness_leaf_P") %>% 
+  bind_rows(test_results, . )
+```
+
+### leaf C
+
+```{r}
+#check normality assumption
+par(mfrow = c(1, 2))
+hist(filter(aus_data, woodiness ==1)$leaf_C_per_dry_mass, main = "leaf C woodiness 1")
+hist(filter(aus_data, woodiness ==0)$leaf_C_per_dry_mass, main = "leaf C wooediness 0")
+
+qqnorm(filter(aus_data, woodiness == 1)$leaf_C_per_dry_mass, main ="leaf C 1")
+qqline(filter(aus_data, woodiness == 1)$leaf_C_per_dry_mass, col = "red")
+
+qqnorm(filter(aus_data, woodiness == 0)$leaf_C_per_dry_mass, main = "leaf C 0")
+qqline(filter(aus_data, woodiness == 0)$leaf_C_per_dry_mass, col = "red")
+
+#check assumption of equal variance
+var.test(leaf_C_per_dry_mass ~ woodiness, data = aus_data) 
+bartlett.test(leaf_C_per_dry_mass ~ woodiness, data = aus_data)
+leveneTest(leaf_C_per_dry_mass ~ factor(woodiness), data = aus_data)
+
+#do test
+woodiness_leafC_t_test <- t.test(data = aus_data, leaf_C_per_dry_mass ~ woodiness, var.equal = FALSE)
+
+print(woodiness_leafP_t_test)
+```
+
+Substantial deviation of normality for woody leaf C values- left skewed. Further assess:
+
+```{r}
+#further test for normality:
+shapiro.test(filter(aus_data, woodiness ==1)$leaf_C_per_dry_mass)
+shapiro.test(filter(aus_data, woodiness ==0)$leaf_C_per_dry_mass)
+```
+
+Not that distant from W =1. Proceed with test.
+
+```{r}
+test_results <- woodiness_leafC_t_test %>% 
+  tidy() %>% 
+  mutate(test_source = "woodiness_leaf_C") %>% 
+  bind_rows(test_results, . )
+```
+
+### ln_NP_ratio
+
+```{r}
+#check normality assumption
+par(mfrow = c(1, 2))
+hist(filter(aus_data, woodiness ==1)$ln_NP_ratio, main = "ln NP wood 1")
+hist(filter(aus_data, woodiness ==0)$ln_NP_ratio, main = "ln NP wood 0")
+
+qqnorm(filter(aus_data, woodiness == 1)$ln_NP_ratio, main ="ln NP 1")
+qqline(filter(aus_data, woodiness == 1)$ln_NP_ratio, col = "red")
+
+qqnorm(filter(aus_data, woodiness == 0)$ln_NP_ratio, main = "ln NP 0")
+qqline(filter(aus_data, woodiness == 0)$ln_NP_ratio, col = "red")
+
+#check assumption of equal variance
+var.test(ln_NP_ratio ~ woodiness, data = aus_data) 
+bartlett.test(ln_NP_ratio ~ woodiness, data = aus_data)
+leveneTest(ln_NP_ratio ~ factor(woodiness), data = aus_data)
+
+#do test
+woodiness_lnNP_t_test <- t.test(data = aus_data, ln_NP_ratio ~ woodiness, var.equal = FALSE)
+
+print(woodiness_lnNP_t_test)
+```
+
+Distributions normal enough. Variances unequal. Use welsh t-test.
+
+```{r}
+test_results <- woodiness_lnNP_t_test %>% 
+  tidy() %>% 
+  mutate(test_source = "woodiness_lnNP") %>% 
+  bind_rows(test_results, . )
+```
+
+### ln_CN_ratio
+
+```{r}
+#check normality assumption
+par(mfrow = c(1, 2))
+hist(filter(aus_data, woodiness ==1)$ln_CN_ratio, main = "ln CN wood 1")
+hist(filter(aus_data, woodiness ==0)$ln_CN_ratio, main = "ln CN wood 0")
+
+qqnorm(filter(aus_data, woodiness == 1)$ln_CN_ratio, main ="ln CN 1")
+qqline(filter(aus_data, woodiness == 1)$ln_CN_ratio, col = "red")
+
+qqnorm(filter(aus_data, woodiness == 0)$ln_CN_ratio, main = "ln CN 0")
+qqline(filter(aus_data, woodiness == 0)$ln_CN_ratio, col = "red")
+
+#check assumption of equal variance
+var.test(ln_CN_ratio ~ woodiness, data = aus_data) 
+bartlett.test(ln_CN_ratio ~ woodiness, data = aus_data)
+leveneTest(ln_CN_ratio ~ factor(woodiness), data = aus_data)
+
+#do test
+woodiness_lnCN_t_test <- t.test(data = aus_data, ln_CN_ratio ~ woodiness, var.equal = FALSE)
+
+print(woodiness_lnCN_t_test)
+```
+
+Normal enough distributions. Variances unequal. Use welsh t-test.
+
+```{r}
+test_results <- woodiness_lnCN_t_test %>% 
+  tidy() %>% 
+  mutate(test_source = "woodiness_lnCN") %>% 
+  bind_rows(test_results, . )
+```
+
+### ln_CP_ratio
+
+```{r}
+#check normality assumption
+par(mfrow = c(1, 2))
+hist(filter(aus_data, woodiness ==1)$ln_CP_ratio, main = "ln CP wood 1")
+hist(filter(aus_data, woodiness ==0)$ln_CP_ratio, main = "ln CP wood 0")
+
+qqnorm(filter(aus_data, woodiness == 1)$ln_CP_ratio, main ="ln CP 1")
+qqline(filter(aus_data, woodiness == 1)$ln_CP_ratio, col = "red")
+
+qqnorm(filter(aus_data, woodiness == 0)$ln_CP_ratio, main = "ln CP 0")
+qqline(filter(aus_data, woodiness == 0)$ln_CP_ratio, col = "red")
+
+#check assumption of equal variance
+var.test(ln_CP_ratio ~ woodiness, data = aus_data) 
+bartlett.test(ln_CP_ratio ~ woodiness, data = aus_data)
+leveneTest(ln_CP_ratio ~ factor(woodiness), data = aus_data)
+
+#do test
+woodiness_lnCP_t_test <- t.test(data = aus_data, ln_CP_ratio ~ woodiness, var.equal = FALSE)
+
+print(woodiness_lnCP_t_test)
+```
+
+Heavy lower tail for woody CP values. Variances unequal. Use welsh t-test.
+
+```{r}
+test_results <- woodiness_lnCP_t_test %>% 
+  tidy() %>% 
+  mutate(test_source = "woodiness_lnCP") %>% 
+  bind_rows(test_results, . )
+```
+
+## myc_type
+
+Assumptions of ANOVA: a) normality of data (+ residuals), b) homoscedasticity, c) additivity
+
+a\) can assess using residuals of ANOVA model in a wwplot.
+
+b\) verify using residuals vs. fitted plot or scale-location plot - should have equivalent spread of residuals for each of the fitted values.or perform bartlett.test (p values should be \> 0.05 for homoscedasticity to be respected)
+
+c\) consider whether effects of two factors are additive: if the effect of one factor remains constant over all levels of the other factor, and that each factor influences the response independently of the other factor
+
+We are going to assume the combined mycorrhizal types are independent of their component parts, due to ecological reasons.
+
+First, assess normality of data for all 6 leaf traits.
+
+```{r}
+nutrients <- c("ln_leaf_N", "ln_leaf_P", "leaf_C_per_dry_mass",
+               "ln_NP_ratio", "ln_CN_ratio", "ln_CP_ratio")
+
+for (trait in nutrients) {
+  print(
+    ggplot(aus_data, aes(x = .data[[trait]])) +
+  geom_histogram() +
+  facet_wrap(~ myc_type, scales = "free") +
+  theme_classic()
+  )
+  
+  print(
+    ggplot(aus_data, aes(sample = .data[[trait]])) +
+      stat_qq(distribution = stats::qnorm) +
+      stat_qq_line(colour = "red", distribution = stats::qnorm ) +
+      facet_wrap(~ myc_type, scales = "free") +
+      theme_classic() +
+      labs(title = paste("Q-Q plots:", trait))
+  )
+}
+```
+
+Despite sample missingness causing extremely non-normal distributions,
+
+### ln_leaf_N
+
+Plot for diagnostic residuals.
+
+```{r}
+myc_aov_N <- aov(ln_leaf_N ~ as.factor(myc_type), data = aus_data)
+par(mfrow = c(2, 2))
+plot(myc_aov_N)
+
+aggregate(ln_leaf_N ~ myc_type, data = aus_data, mean)
+```
+
+EcM and EcM-AM have essentially the same means, which isn't surprising. AM and NM-AM are also quite similar.
+
+```{r}
+#test assumption of normality of residuals
+hist(resid(myc_aov_N))
+
+#look at distribution per level
+ggplot(aus_data, aes(x = ln_leaf_N)) +
+  geom_histogram() +
+  facet_wrap(~ myc_type, scales = "free") +
+  theme_bw()
+
+#look at normality per level
+myc_types <- na.omit(unique(aus_data$myc_type))
+par(mfrow = c(2, 3))
+
+for (myc in myc_types) {
+  x <- filter(aus_data, myc_type == myc)$ln_leaf_N
+  qqnorm(x, main = myc)
+  qqline(x, col = "red")
+}
+
+#test assumption of homogeneity of variance
+bartlett.test(ln_leaf_N ~ as.factor(myc_type), data = aus_data)
+library(car)
+leveneTest(ln_leaf_N ~ as.factor(myc_type), data = aus_data)
+
+#check how much variance varies among groups
+aggregate(ln_leaf_N ~ myc_type, data = aus_data, sd)
+```
+
+Residuals look normal enough. Substantial deviation of normality within each level, but qqplots look somewhat acceptable. Bartlett test and levene test passed, so null hypothesis of homogenous variance rejected. EcM and ErM vary little relative to the others, which makes sense given they have the smallest sample size.
+
+Do Welch's ANOVA:
+
+```{r}
+myc_aov_welch_N <- oneway.test(ln_leaf_N ~ myc_type, data = aus_data, var.equal = FALSE)
+myc_aov_welch_N
+
+test_results <- myc_aov_welch_N %>% 
+  tidy() %>% 
+  mutate(test_source = "myctype_leaf_N") %>% 
+  bind_rows(test_results, . )
+```
+
+Post-hoc test: Can't use tukey since assumption of equal variances is not met.
+
+```{r}
+library(rstatix)
+posthoc_myc_leafN <- games_howell_test(aus_data, ln_leaf_N ~ myc_type)
+posthoc_myc_leafN
+```
+
+As expected, only non-significant contrasts from AM and NM-AM, and EcM and EcM-AM.
+
+### ln_leaf_P
+
+Plot diagnostic residuals. Not yet decided on final model.
+
+```{r}
+myc_aov_P <- aov(ln_leaf_P ~ as.factor(myc_type), data = aus_data)
+par(mfrow = c(2, 2))
+plot(myc_aov_P)
+
+aggregate(ln_leaf_P ~ myc_type, data = aus_data, mean)
+```
+
+Each individual category has distinctive means. Variances appear more homogenous than leaf N.
+
+```{r}
+#test assumption of normality of residuals
+hist(resid(myc_aov_P))
+
+#look at distribution per level
+ggplot(aus_data, aes(x = ln_leaf_P)) +
+  geom_histogram() +
+  facet_wrap(~ myc_type, scales = "free") +
+  theme_bw()
+
+#look at normality per level
+myc_types <- na.omit(unique(aus_data$myc_type))
+par(mfrow = c(2, 3))
+
+for (myc in myc_types) {
+  x <- filter(aus_data, myc_type == myc)$ln_leaf_P
+  qqnorm(x, main = myc)
+  qqline(x, col = "red")
+}
+
+#test assumption of homogeneity of variance
+bartlett.test(ln_leaf_P ~ as.factor(myc_type), data = aus_data)
+library(car)
+leveneTest(ln_leaf_P ~ as.factor(myc_type), data = aus_data)
+
+#check how much variance varies among groups
+aggregate(ln_leaf_P ~ myc_type, data = aus_data, sd)
+```
+
+Residuals look normal enough. Substantial deviation of normality within each level, especially ErM, but qqplots look somewhat acceptable. Bartlett test and levene test passed, so null hypothesis of homogenous variance rejected. EcM and ErM vary little relative to the others, which makes sense given they have the smallest sample size.
+
+Do Welch's ANOVA:
+
+```{r}
+myc_aov_welch_P <- oneway.test(ln_leaf_P ~ myc_type, data = aus_data, var.equal = FALSE)
+myc_aov_welch_P
+
+test_results <- myc_aov_welch_P %>% 
+  tidy() %>% 
+  mutate(test_source = "myctype_leaf_P") %>% 
+  bind_rows(test_results, . )
+```
+
+Post-hoc test: Can't use tukey since assumption of equal variances is not met.
+
+```{r}
+posthoc_myc_leafP <- games_howell_test(aus_data, ln_leaf_P ~ myc_type)
+posthoc_myc_leafP
+```
+
+Non-significant contrasts from EcM and ErM mostly.
+
+### leaf C
+
+Plot diagnostic residuals. Not yet decided on final model.
+
+```{r}
+myc_aov_C <- aov(leaf_C_per_dry_mass ~ as.factor(myc_type), data = aus_data)
+par(mfrow = c(2, 2))
+plot(myc_aov_C)
+
+aggregate(leaf_C_per_dry_mass ~ myc_type, data = aus_data, mean)
+```
+
+Each individual category has distinctive means. Variances heterogenous. Outliers identified in leverage plot.
+
+```{r}
+#test assumption of normality of residuals
+hist(resid(myc_aov_C))
+
+#look at distribution per level
+ggplot(aus_data, aes(x = leaf_C_per_dry_mass)) +
+  geom_histogram() +
+  facet_wrap(~ myc_type, scales = "free") +
+  theme_bw()
+
+#look at normality per level
+myc_types <- na.omit(unique(aus_data$myc_type))
+par(mfrow = c(2, 3))
+
+for (myc in myc_types) {
+  x <- filter(aus_data, myc_type == myc)$leaf_C_per_dry_mass
+  qqnorm(x, main = myc)
+  qqline(x, col = "red")
+}
+
+#test assumption of homogeneity of variance
+bartlett.test(leaf_C_per_dry_mass ~ as.factor(myc_type), data = aus_data)
+library(car)
+leveneTest(leaf_C_per_dry_mass ~ as.factor(myc_type), data = aus_data)
+
+#check how much variance varies among groups
+aggregate(leaf_C_per_dry_mass~ myc_type, data = aus_data, sd)
+```
+
+Residuals extremely non-normal distributions within some levels, particularly the low sample sizes - will make the assumption from the qqlines that they would approximate a normal dist if we had more values. Extremely uneven variances as well, but likely due to uneven sample sizes as well.
+
+Do Welch's ANOVA:
+
+```{r}
+myc_aov_welch_C <- oneway.test(leaf_C_per_dry_mass ~ myc_type, data = aus_data, var.equal = FALSE)
+myc_aov_welch_C
+
+test_results <- myc_aov_welch_C %>% 
+  tidy() %>% 
+  mutate(test_source = "myctype_leaf_C") %>% 
+  bind_rows(test_results, . )
+```
+
+Post-hoc test: Can't use tukey since assumption of equal variances is not met.
+
+```{r}
+posthoc_myc_leafC <- games_howell_test(aus_data, leaf_C_per_dry_mass ~ myc_type)
+posthoc_myc_leafC
+```
+
+Non-significant contrasts from EcM and ErM mostly.
+
+### ln_NP_ratio
+
+Plot diagnostic residuals. Not yet decided on final model.
+
+```{r}
+myc_aov_NP <- aov(ln_NP_ratio ~ as.factor(myc_type), data = aus_data)
+par(mfrow = c(2, 2))
+plot(myc_aov_NP)
+
+aggregate(ln_NP_ratio ~ myc_type, data = aus_data, mean)
+```
+
+EcM-AM, NM, and NM_AM have similar means. AM has notably different means. Variances appear more homogenous than leaf N. Color residuals by mycorrhizal type:
+
+```{r}
+#test assumption of normality of residuals
+hist(resid(myc_aov_NP))
+
+#look at distribution per level
+ggplot(aus_data, aes(x = ln_NP_ratio)) +
+  geom_histogram() +
+  facet_wrap(~ myc_type, scales = "free") +
+  theme_bw()
+
+#look at normality per level
+myc_types <- na.omit(unique(aus_data$myc_type))
+par(mfrow = c(2, 3))
+
+for (myc in myc_types) {
+  x <- filter(aus_data, myc_type == myc)$ln_NP_ratio
+  qqnorm(x, main = myc)
+  qqline(x, col = "red")
+}
+
+#test assumption of homogeneity of variance
+bartlett.test(ln_NP_ratio ~ as.factor(myc_type), data = aus_data)
+library(car)
+leveneTest(ln_NP_ratio ~ as.factor(myc_type), data = aus_data)
+
+#check how much variance varies among groups
+aggregate(ln_NP_ratio ~ myc_type, data = aus_data, sd)
+```
+
+Substantial deviation of normality within each level, especially ErM, but qqplots look somewhat acceptable. Bartlett test and levene test passed, so null hypothesis of homogenous variance rejected. ErM varies more than other categories notably.
+
+Do Welch's ANOVA:
+
+```{r}
+myc_aov_welch_NP <- oneway.test(ln_NP_ratio ~ myc_type, data = aus_data, var.equal = FALSE)
+myc_aov_welch_NP
+
+test_results <- myc_aov_welch_NP %>% 
+  tidy() %>% 
+  mutate(test_source = "myctype_leaf_NP") %>% 
+  bind_rows(test_results, . )
+```
+
+Post-hoc test: Can't use tukey since assumption of equal variances is not met.
+
+```{r}
+posthoc_myc_leafNP <- games_howell_test(aus_data, ln_NP_ratio ~ myc_type)
+posthoc_myc_leafNP
+```
+
+Non-significant contrasts spread across the categories.
+
+### ln_CN_ratio
+
+Plot diagnostic residuals. Not yet decided on final model.
+
+```{r}
+myc_aov_CN <- aov(ln_CN_ratio ~ as.factor(myc_type), data = aus_data)
+par(mfrow = c(2, 2))
+plot(myc_aov_CN)
+
+aggregate(ln_CN_ratio ~ myc_type, data = aus_data, mean)
+```
+
+EcM and NM have similar means. Variances appear more homogenous than leaf N.
+
+```{r}
+#test assumption of normality of residuals
+hist(resid(myc_aov_CN))
+
+#look at distribution per level
+ggplot(aus_data, aes(x = ln_CN_ratio)) +
+  geom_histogram() +
+  facet_wrap(~ myc_type, scales = "free") +
+  theme_bw()
+
+#look at normality per level
+myc_types <- na.omit(unique(aus_data$myc_type))
+par(mfrow = c(2, 3))
+
+for (myc in myc_types) {
+  x <- filter(aus_data, myc_type == myc)$ln_CN_ratio
+  qqnorm(x, main = myc)
+  qqline(x, col = "red")
+}
+
+#test assumption of homogeneity of variance
+bartlett.test(ln_CN_ratio ~ as.factor(myc_type), data = aus_data)
+library(car)
+leveneTest(ln_CN_ratio ~ as.factor(myc_type), data = aus_data)
+
+#check how much variance varies among groups
+aggregate(ln_CN_ratio ~ myc_type, data = aus_data, sd)
+```
+
+Substantial deviation of normality within each level, especially ErM, but qqplots look somewhat acceptable. Bartlett test and levene test passed, so null hypothesis of homogenous variance rejected. ErM and EcM vary less than the other categories notably.
+
+Do Welch's ANOVA:
+
+```{r}
+myc_aov_welch_CN <- oneway.test(ln_CN_ratio ~ myc_type, data = aus_data, var.equal = FALSE)
+myc_aov_welch_CN
+
+test_results <- myc_aov_welch_CN %>% 
+  tidy() %>% 
+  mutate(test_source = "myctype_leaf_CN") %>% 
+  bind_rows(test_results, . )
+```
+
+Post-hoc test: Can't use tukey since assumption of equal variances is not met.
+
+```{r}
+posthoc_myc_leafCN <- games_howell_test(aus_data, ln_CN_ratio ~ myc_type)
+posthoc_myc_leafCN
+```
+
+Non-significant contrasts spread across the categories.
+
+### ln_CP_ratio
+
+Plot diagnostic residuals. Not yet decided on final model.
+
+```{r}
+myc_aov_CP <- aov(ln_CP_ratio ~ as.factor(myc_type), data = aus_data)
+par(mfrow = c(2, 2))
+plot(myc_aov_CP)
+
+aggregate(ln_CP_ratio ~ myc_type, data = aus_data, mean)
+```
+
+Different enough means. Variances appear more homogenous than leaf N. Remember that there are no ErM values for ln CP.
+
+```{r}
+#test assumption of normality of residuals
+hist(resid(myc_aov_CP))
+
+#look at distribution per level
+ggplot(aus_data, aes(x = ln_CP_ratio)) +
+  geom_histogram() +
+  facet_wrap(~ myc_type, scales = "free") +
+  theme_bw()
+
+#look at normality per level
+myc_types <- na.omit(unique(aus_data$myc_type))
+myc_types <- myc_types[myc_types != "ErM"]
+par(mfrow = c(2, 3))
+
+for (myc in myc_types) {
+  x <- filter(aus_data, myc_type == myc)$ln_CP_ratio
+  qqnorm(x, main = myc)
+  qqline(x, col = "red")
+}
+
+#test assumption of homogeneity of variance
+bartlett.test(ln_CP_ratio ~ as.factor(myc_type), data = aus_data)
+library(car)
+leveneTest(ln_CP_ratio ~ as.factor(myc_type), data = aus_data)
+
+#check how much variance varies among groups
+aggregate(ln_CP_ratio ~ myc_type, data = aus_data, sd)
+```
+
+Distributions all look different, no values for ErM, but qqplots look acceptable. Bartlett test and levene test passed, so null hypothesis of homogenous variance rejected. Marked differences in variances.
+
+Do Welch's ANOVA:
+
+```{r}
+myc_aov_welch_CP <- oneway.test(ln_CP_ratio ~ myc_type, data = aus_data, var.equal = FALSE)
+myc_aov_welch_CP
+
+test_results <- myc_aov_welch_CP %>% 
+  tidy() %>% 
+  mutate(test_source = "myctype_leaf_CP") %>% 
+  bind_rows(test_results, . )
+```
+
+Post-hoc test: Can't use tukey since assumption of equal variances is not met.
+
+```{r}
+posthoc_myc_leafCP <- games_howell_test(aus_data, ln_CP_ratio ~ myc_type)
+posthoc_myc_leafCP
+```
+
+Non-significant contrasts spread across the categories.
+
+Write results:
+
+```{r}
+post_hoc_results <- tibble()
+
+post_hoc_results <- post_hoc_results %>%
+  bind_rows(
+    posthoc_myc_leafN %>%
+      mutate(test_source = "myctype_leaf_N"),
+    posthoc_myc_leafP %>%
+      mutate(test_source = "myctype_leaf_P"),
+    posthoc_myc_leafC %>%
+      mutate(test_source = "myctype_leaf_C"),
+    posthoc_myc_leafNP %>%
+      mutate(test_source = "myctype_leaf_NP"),
+    posthoc_myc_leafCN %>%
+      mutate(test_source = "myctype_leaf_CN"),
+    posthoc_myc_leafCP %>%
+      mutate(test_source = "myctype_leaf_CP")
+  )
+```
+
+This is code for the question: does membership of each individual mycorrhizal type lead to higher or lower leaf nitrogen, whilst accounting for the other mycorrhizal types? It is not "is there a difference in the means between these mycorhizzal types?"
+
+```{r}
+library(emmeans)
+#check assumption of equal variance
+par(mfrow = c(1, 2))
+hist(filter(aus_data, AM ==1)$ln_leaf_N, main = "leaf N AM")
+hist(filter(aus_data, AM ==0)$ln_leaf_N, main = "leaf N AM")
+
+hist(filter(aus_data, EcM ==1)$ln_leaf_N, main = "leaf N EcM")
+hist(filter(aus_data, EcM ==0)$ln_leaf_N, main = "leaf N EcM")
+
+hist(filter(aus_data, NM ==1)$ln_leaf_N, main = "leaf N NM")
+hist(filter(aus_data, NM ==0)$ln_leaf_N, main = "leaf N NM")
+
+hist(filter(aus_data, ErM ==1)$ln_leaf_N, main = "leaf N ErM")
+hist(filter(aus_data, ErM ==0)$ln_leaf_N, main = "leaf N ErM")
+
+#var.test(ln_leaf_N ~ AM + EcM + NM + ErM, data = aus_data) 
+#bartlett.test(ln_leaf_N ~ AM + EcM + NM + ErM, data = aus_data)
+#leveneTest(ln_leaf_N ~ AM + EcM + NM + ErM, data = aus_data)
+
+#do test
+aov_mod <- aov(data = aus_data, ln_leaf_N ~ as.factor(AM) + as.factor(EcM) + as.factor(NM) + as.factor(ErM))
+summary(aov_mod)
+#check assumption of normality of residuals
+plot(aov_mod)
+qqnorm(resid(aov_mod))
+qqline(resid(aov_mod))
+hist(resid(aov_mod))
+```
+
+After accounting fo the other associations, AM, EcM, and NM differ in leaf nitrogen between 1 and 0.
+
+Just do an ANOVA and justify it as being independent.
+
+```{r}
+myc_colors <- c("red", "blue", "green", "orange", "purple", "brown")
+
+# Get the observations actually used by the model
+model_data <- model.frame(myc_aov_P)
+
+names(model_data)[names(model_data) == "as.factor(myc_type)"] <- "myc_type"
+
+# Generate colours from the model's mycorrhizal types
+myc_model <- as.factor(model_data$myc_type)
+cols <- myc_colors[myc_model]
+
+par(mfrow = c(2, 2))
+
+for (i in c(1, 2, 3, 5)) {
+  plot(myc_aov_P, which = i, col = cols)
+
+  legend("topright",
+         legend = levels(myc_model),
+         col = myc_colors[seq_along(levels(myc_model))],
+         pch = 1,
+         cex = 0.7)
+}
+```
+
+Write results:
+
+```{r}
+setwd("/Users/sofiaquijada/Library/Mobile Documents/com~apple~CloudDocs/McGill/Soper Lab/AusStoich")
+
+write_csv(test_results, file = "Results/t_test_anova_results/test_results.csv")
+write_csv(post_hoc_results, file = "Results/t_test_anova_results/post_hoc_results.csv")
+```
