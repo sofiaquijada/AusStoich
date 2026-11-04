@@ -52,8 +52,7 @@ for (response in traits) {
 
 basepath <- "Results/Summer 2026 Analyses/LMMs"
  
-#model_types <- c("env_tax", "tax")
-model_types <- c("tax")
+model_types <- c("env_tax", "tax")
 
 for (response in traits) {
   
@@ -116,9 +115,57 @@ for (response in traits) {
   }
 }
 
-#-------------------------------Diagnostics-------------------------------------
+#post hoc addition: env only model
+basepath <- "Results/Summer 2026 Analyses/LMMs"
+model_type = "env"
 
-#ran loop on GIC teal, follow up to diagnostics
+for (response in traits) {
+  
+  #read in selected (linearly indep) variables
+  current_cont_predictors <- selected_variables[[response]]
+  
+  #create folder
+  filepath <- file.path(basepath, response, model_type)
+  dir.create(filepath, recursive = TRUE, showWarnings = FALSE)
+  
+  #simple linear regression with only environmental predictors
+  form <- as.formula(paste(response,
+                           "~", paste(c(current_cont_predictors),
+                                      collapse = " + ")))
+                     
+  model <- lm(form, data = aus_data)
+  
+  #save summary
+  sink(file.path(filepath, paste0(response, "_", model_type, "_summary.txt")))
+  print(summary(model))
+  sink()
+  
+  #save variance partitioning
+  sink(file.path(filepath, paste0(response, "_", model_type, "_varpart.txt")))
+  print(r.squaredGLMM(model))
+  sink()
+  
+  #save model object
+  saveRDS(model,
+          file = file.path(filepath,
+                           paste0(response, "_", model_type, ".RDS")))
+  
+  #save broom outputs
+  write.csv(glance(model),
+            file = file.path(filepath,
+                             paste0(response, "_", model_type, "_glance.csv")))
+  
+  write.csv(tidy(model, effects = "fixed"),
+            file = file.path(filepath,
+                             paste0(response, "_", model_type, "_tidy.csv")))
+  
+  write.csv(augment(model),
+            file = file.path(filepath,
+                             paste0(response, "_", model_type, "_augment.csv")))
+}
+
+#ran loop on GIC teal
+#-------------------------------Diagnostics-------------------------------------
 
 #fill in depending on the RDS that is read in
 #12 total model objects
@@ -321,7 +368,7 @@ total_parts_envtax$foliar_trait <- factor(total_parts_envtax$foliar_trait,levels
 
 #try and get consistent colors
 var_colors <- c(residual = "#1B9E77",environment = "#D95F02",
-                species_binom = "#7570B3", genus = "#E7298A",family = "#66A61E")
+                species_binom = "deepskyblue", genus = "#4197D9",family = "#1F65CC")
 
 ggplot(random_parts_envtax,
        aes(fill = group, y = pct_var, x = foliar_trait)) +
@@ -334,9 +381,7 @@ ggplot(random_parts_envtax,
     labels = c("Family","Genus","Species","Residual")
   ) +
   scale_x_discrete(
-    limits = rev(levels(random_parts_envtax$foliar_trait)),
-    labels = c("CN","CP","NP","C","P","N")
-  ) +
+    limits = rev(levels(random_parts_envtax$foliar_trait))) +
   coord_flip() +
   theme(
     axis.title = element_text(size = 0),
@@ -353,33 +398,54 @@ ggplot(total_parts_envtax,
   coord_flip() +
   labs(x = "Foliar chemistry",
        y = "Proportion of total variance",
-       title = "Variance Partition in trait ~ environment + taxonomy mod") +
+       title = "Variance Partition in trait ~ Taxonomy + Environment") +
   scale_fill_manual(
     values = var_colors,
     breaks = c("residual","environment","species_binom","genus","family"),
     labels = c("Residual","Environment","Species","Genus","Family")
   ) +
   scale_x_discrete(
-    limits = rev(levels(total_parts_envtax$foliar_trait)),
-    labels = c("CN","CP","NP","C","P","N")) +
+    limits = rev(levels(total_parts_envtax$foliar_trait))) +
+  theme_minimal() +
   theme(
-    axis.title = element_text(size = 0),
-    axis.text.y = element_text(size = 16),   
-    axis.text.x = element_text(size = 14),
-    legend.text = element_text(size = 14),
-    legend.title = element_text(size = 16),
-    plot.title = element_text(size = 16)
+    axis.title = element_text(size = 20),
+    axis.text.y = element_text(size = 15),   
+    axis.text.x = element_text(size = 15),
+    legend.text = element_text(size = 0),
+    legend.title = element_text(size = 0),
+    plot.title = element_text(size = 20)
   )
+
+ggpubr::as_ggplot(get_legend(p))
+
+ggsave("Outputs/Visualizations/Manuscript/envtax_varpart.png", dpi = 800)
 
 rm(N_part_ET, P_part_ET, C_part_ET, NP_part_ET, CN_part_ET, CP_part_ET)
 
 #----------- plot model estimates
 
 #plot estimates based on significance
-#only for env tax model
 
-plot_coefs <- function(model, env_tax_file, trait_name){
+#predictor labels
+term_labels <- c( AET = "Actual Evapotranspiration",
+                  temp_seasonality = "Temperature Seasonality",
+                  precipitation_seasonality = "Precipitation Seasonality",
+                  PPT = "Precipitation",
+                  NPP = "Net Primary Productivity",
+                  MAT = "Mean Annual Temperature",
+                  CEC_total_0_30 = "Cation Exchange Capacity",
+                  AP_total_0_30 = "Available Phosphorus",
+                  log_SP_total_0_30 = "Total Soil Phosphorus (log)", SOC_total_0_30 = "Total Soil Carbon",
+                  SN_total_0_30 = "Total Soil Nitrogen")
+
+#desired ordering
+predictor_order <- c("temp_seasonality", "precipitation_seasonality","PPT","NPP","MAT",
+                     "CEC_total_0_30","AP_total_0_30",
+                     "log_SP_total_0_30","SOC_total_0_30","SN_total_0_30" )
+
+plot_coefs <- function(model, env_tax_file, trait_name, predictor_labels, predictor_order){
   #this function takes as input filepaths for tidy model output
+  #calculates merMod CI's
   #to plot estimates
   
   #read in results and remove intercept
@@ -396,23 +462,6 @@ plot_coefs <- function(model, env_tax_file, trait_name){
   
   env_tax <- env_tax %>%
     left_join(CI, by = "term")
-  
-  #predictor labels
-  term_labels <- c( AET = "Actual Evapotranspiration",
-    temp_seasonality = "Temperature Seasonality",
-    precipitation_seasonality = "Precipitation Seasonality",
-    PPT = "Precipitation",
-    NPP = "Net Primary Productivity",
-    MAT = "Mean Annual Temperature",
-    CEC_total_0_30 = "Cation Exchange Capacity",
-    AP_total_0_30 = "Available Phosphorus",
-    log_SP_total_0_30 = "Total Soil Phosphorus (log)", SOC_total_0_30 = "Total Soil Carbon",
-    SN_total_0_30 = "Total Soil Nitrogen")
-  
-  #desired ordering
-  predictor_order <- c("temp_seasonality", "precipitation_seasonality","PPT","NPP","MAT",
-                       "CEC_total_0_30","AP_total_0_30",
-                       "log_SP_total_0_30","SOC_total_0_30","SN_total_0_30" )
 
   env_tax$term <- factor(env_tax$term, levels = predictor_order)
   
@@ -424,29 +473,206 @@ plot_coefs <- function(model, env_tax_file, trait_name){
                    position = pd,height = 0) +
     geom_point(position = pd, size = 3) +
     scale_linewidth_manual(values = c(`TRUE` = 1.2, `FALSE` = 0.4), guide = "none") +
-    scale_y_discrete(labels = term_labels) +
+    scale_y_discrete(labels = predictor_labels) +
     labs(x = "Estimate",y = "", title = trait_name) +
     theme_minimal() +
     theme(
-      axis.text.y = element_text(size = 13),
-      axis.text.x = element_text(size = 12),
-      plot.title = element_text(size = 15)
+      axis.text.y = element_text(size = 15),
+      axis.text.x = element_text(size = 15),
+      plot.title = element_text(size = 20), 
+      axis.title = element_text(size = 20)
     )
 }
 
 plot_coefs(ln_leaf_N_env_tax, "Results/Summer 2026 Analyses/LMMs/ln_leaf_N/env_tax/ln_leaf_N_env_tax_tidy.csv",
-          "Leaf N")
+          "Leaf N - Taxonomy", term_labels, predictor_order)
 plot_coefs(ln_leaf_P_env_tax, "Results/Summer 2026 Analyses/LMMs/ln_leaf_P/env_tax/ln_leaf_P_env_tax_tidy.csv",
-           "Leaf P")
+           "Leaf P - Taxonomy", term_labels, predictor_order)
 plot_coefs(leaf_C_per_dry_mass_env_tax, "Results/Summer 2026 Analyses/LMMs/leaf_C_per_dry_mass/env_tax/leaf_C_per_dry_mass_env_tax_tidy.csv",
-           "Leaf C")
+           "Leaf C - Taxonomy", term_labels, predictor_order)
 plot_coefs(ln_NP_ratio_env_tax, "Results/Summer 2026 Analyses/LMMs/ln_NP_ratio/env_tax/ln_NP_ratio_env_tax_tidy.csv",
-           "N:P ratio")
+           "N:P ratio - Taxonomy", term_labels, predictor_order)
 plot_coefs(ln_CN_ratio_env_tax, "Results/Summer 2026 Analyses/LMMs/ln_CN_ratio/env_tax/ln_CN_ratio_env_tax_tidy.csv",
-           "C:N ratio")
+           "C:N ratio - Taxonomy", term_labels, predictor_order)
 plot_coefs(ln_CP_ratio_env_tax, "Results/Summer 2026 Analyses/LMMs/ln_CP_ratio/env_tax/ln_CP_ratio_env_tax_tidy.csv",
-           "C:P ratio")
+           "C:P ratio - Taxonomy",term_labels, predictor_order)
 
 #CN most substantially explained by env
 library(partR2)
 summary(partR2(ln_CN_ratio_env_tax))
+
+#plot estimates from env only model alongside estimates from env-tax, to see where they differ:
+
+get_coefs <- function(mod_type, filepath, model, pred_order) {
+  #this function extracts coefficients ready for plotting
+  #whether its env only or env_tax model
+  
+  if (mod_type == "env") {
+      #read in results and remove intercept
+      env <- read_csv(filepath) %>%
+      mutate(model = "Environment") %>% filter(term != "(Intercept)")
+      
+      CI <- confint(model, level = 0.95) %>%
+        as.data.frame() %>%
+        tibble::rownames_to_column("term") %>%
+        rename(
+          lower = "2.5 %",
+          upper = "97.5 %")
+  
+      env <- env %>%
+        left_join(CI, by = "term")
+      
+      env$term <- factor(env$term, levels = predictor_order)
+      
+      env$mod_type <- as.factor(mod_type)
+      return(env)
+  }
+  
+  if (mod_type == "env_tax") {
+    #read in results and remove intercept
+    env_tax <- read_csv(filepath) %>%
+      mutate(model = "Environment + Taxonomy")  %>% filter(term != "(Intercept)")
+    
+    #confidence interval
+    CI <- confint.merMod(model, method = "Wald") %>%
+      as.data.frame() %>%
+      tibble::rownames_to_column("term") %>%
+      rename(
+        lower = "2.5 %",
+        upper = "97.5 %")
+    
+    env_tax <- env_tax %>%
+      left_join(CI, by = "term")
+    
+    env_tax$term <- factor(env_tax$term, levels = predictor_order)
+    env_tax$mod_type <- as.factor(mod_type)
+    
+    return(env_tax)
+  }
+}
+
+#read in env coefficients
+N_env <- get_coefs("env", "Results/Summer 2026 Analyses/LMMs/ln_leaf_N/env/ln_leaf_N_env_tidy.csv",
+               ln_leaf_N_env, predictor_order)
+P_env <- get_coefs("env", "Results/Summer 2026 Analyses/LMMs/ln_leaf_P/env/ln_leaf_P_env_tidy.csv",
+                   ln_leaf_P_env, predictor_order)
+C_env <- get_coefs("env", "Results/Summer 2026 Analyses/LMMs/leaf_C_per_dry_mass/env/leaf_C_per_dry_mass_env_tidy.csv",
+                   leaf_C_per_dry_mass_env, predictor_order)
+NP_env <- get_coefs("env", "Results/Summer 2026 Analyses/LMMs/ln_NP_ratio/env/ln_NP_ratio_env_tidy.csv",
+                   ln_NP_ratio_env, predictor_order)
+CN_env <- get_coefs("env", "Results/Summer 2026 Analyses/LMMs/ln_CN_ratio/env/ln_CN_ratio_env_tidy.csv",
+                    ln_CN_ratio_env, predictor_order)
+CP_env <- get_coefs("env", "Results/Summer 2026 Analyses/LMMs/ln_CP_ratio/env/ln_CP_ratio_env_tidy.csv",
+                    ln_CP_ratio_env, predictor_order)
+
+#read in env_tax coefficients
+N_env_tax <- get_coefs("env_tax", "Results/Summer 2026 Analyses/LMMs/ln_leaf_N/env_tax/ln_leaf_N_env_tax_tidy.csv",
+                   ln_leaf_N_env_tax, predictor_order)
+P_env_tax <- get_coefs("env_tax", "Results/Summer 2026 Analyses/LMMs/ln_leaf_P/env_tax/ln_leaf_P_env_tax_tidy.csv",
+                       ln_leaf_P_env_tax, predictor_order)
+C_env_tax <- get_coefs("env_tax", "Results/Summer 2026 Analyses/LMMs/leaf_C_per_dry_mass/env_tax/leaf_C_per_dry_mass_env_tax_tidy.csv",
+                       leaf_C_per_dry_mass_env_tax, predictor_order)
+NP_env_tax <- get_coefs("env_tax", "Results/Summer 2026 Analyses/LMMs/ln_NP_ratio/env_tax/ln_NP_ratio_env_tax_tidy.csv",
+                    ln_NP_ratio_env_tax, predictor_order)
+CN_env_tax <- get_coefs("env_tax", "Results/Summer 2026 Analyses/LMMs/ln_CN_ratio/env_tax/ln_CN_ratio_env_tax_tidy.csv",
+                        ln_CN_ratio_env_tax, predictor_order)
+CP_env_tax <- get_coefs("env_tax", "Results/Summer 2026 Analyses/LMMs/ln_CP_ratio/env_tax/ln_CP_ratio_env_tax_tidy.csv",
+                        ln_CP_ratio_env_tax, predictor_order)
+#merge them
+N_coefs <- bind_rows(N_env, N_env_tax) %>% mutate(foliar_trait = "N")
+P_coefs <- bind_rows(P_env, P_env_tax) %>% mutate(foliar_trait = "P")
+C_coefs <- bind_rows(C_env, C_env_tax) %>% mutate(foliar_trait = "C")
+NP_coefs <- bind_rows(NP_env, NP_env_tax) %>% mutate(foliar_trait = "NP")
+CN_coefs <- bind_rows(CN_env, CN_env_tax) %>% mutate(foliar_trait = "CN")
+CP_coefs <- bind_rows(CP_env, CP_env_tax) %>% mutate(foliar_trait = "CP")
+
+fixed_estimates <- bind_rows(N_coefs, P_coefs, C_coefs, NP_coefs, CN_coefs, CP_coefs)
+#write_csv(fixed_estimates, file = "Results/Summer 2026 Analyses/LMMs/estimates.csv")
+
+#plot them together
+plot_fixed_estimates <- function(coef_df, trait_name){
+  ggplot(data = coef_df,
+         aes(x = estimate,
+             y = term,
+             color = mod_type)) +
+    geom_vline(xintercept = 0,
+               linetype = "dashed") +
+    geom_errorbarh(aes(xmin = lower,
+                       xmax = upper),
+                   height = 0.3, 
+                   position = position_dodge(width = 1)) +
+    geom_point(size = 3,
+               position = position_dodge(width = 1)) +
+    scale_y_discrete(labels = term_labels) +
+    labs(
+      x = "Estimate",
+      title = trait_name,
+      color = "mod_type"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.y = element_text(size = 15),
+      axis.text.x = element_text(size = 15),
+      axis.title.x = element_text(size = 20),
+      axis.title.y = element_text(size = 0),
+      plot.title = element_text(size = 25),
+      legend.text = element_text(size = 15),
+      legend.title = element_text(size = 0)
+    )
+}
+
+plot_fixed_estimates(N_coefs, "ln leaf N")
+plot_fixed_estimates(P_coefs, "ln leaf P")
+plot_fixed_estimates(C_coefs, "leaf C")
+plot_fixed_estimates(NP_coefs, "ln NP ratio")
+plot_fixed_estimates(CN_coefs, "ln CN ratio")
+plot_fixed_estimates(CP_coefs, "ln CP ratio")
+
+
+#get delta AIC for all model types
+model_types <- c("env_tax", "tax", "env")
+traits <- c("ln_leaf_N", "ln_leaf_P", "leaf_C_per_dry_mass",
+                      "ln_NP_ratio", "ln_CN_ratio", "ln_CP_ratio")
+basepath <- "Results/Summer 2026 Analyses/LMMs"
+library(purrr)
+
+#get AICs for every trait and model
+#loop over response in traits
+aic_results <- map_dfr(traits, function(response) {
+  
+  env_tax_model <- readRDS(
+    file.path(basepath, response, "env_tax",
+              paste0(response, "_env_tax.RDS"))
+  )
+  
+  tax_model <- readRDS(
+    file.path(basepath, response, "tax",
+              paste0(response, "_tax.RDS"))
+  )
+  
+  env_model <- readRDS(
+    file.path(basepath, response, "env",
+              paste0(response, "_env.RDS"))
+  )
+  
+  AIC_env_tax <- AIC(env_tax_model)
+  AIC_tax <- AIC(tax_model)
+  AIC_env <- AIC(env_model)
+  
+  #find best mod fit
+  min_AIC <- min(AIC_env_tax, AIC_tax, AIC_env)
+  
+  tibble(
+    trait = response,
+    AIC_env_tax = AIC_env_tax,
+    AIC_tax = AIC_tax,
+    AIC_env = AIC_env,
+    
+    delta_AIC_env_tax = AIC_env_tax - min_AIC,
+    delta_AIC_tax = AIC_tax - min_AIC,
+    delta_AIC_env = AIC_env - min_AIC,
+  )
+})
+
+aic_results #env tax is best fit, but mostly driven by taxonomy not environment
+#write_csv(aic_results, file = "Results/Summer 2026 Analyses/LMMs/aic_results.csv")

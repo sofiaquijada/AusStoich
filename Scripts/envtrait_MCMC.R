@@ -24,7 +24,7 @@ BiocManager::install("ggtree")
 setwd("")
 
 #read in trait data
-aus_data <- read_csv(file = "aus_data2026.csv")
+aus_data <- read_csv(file = "Inputs/aus_data2026.csv")
 
 #scale continuous predictors for comparable estimates
 cont_predictors <- c("SN_total_0_30", "log_SP_total_0_30", "SOC_total_0_30",
@@ -163,9 +163,9 @@ prior_phylo <- list(
 )
 #should be weak prior ---- i think this is what i ended up with
 
-Nnitt = 210000
+Nnitt =  210000
 Nburnin = 20000
-Nthin = 50
+Nthin = 50 #try thinning more ??? 
 
 #specify path and trait choice
 setwd("")
@@ -229,7 +229,7 @@ for (response in traits) {
     
     #once 3 chains have run, create combined chain object
     #save gelman.diag + HPD intervals
-    if (count == 3){
+    if (i == 3){
       combined_chains_sol <- mcmc.list(chain1$Sol, chain2$Sol, chain3$Sol)
       combined_chains_VCV <- mcmc.list(chain1$VCV, chain2$VCV, chain3$VCV)
       
@@ -250,7 +250,6 @@ for (response in traits) {
       sink()
     }
     rm(chain1, chain2, chain3, chain)
-    gc() #garbage collection
   }
 }
 
@@ -261,7 +260,7 @@ for (response in traits) {
 #set this in session
 setwd("~/Library/CloudStorage/OneDrive-SharedLibraries-McGillUniversity/Fiona Soper, Dr - Sofia AusStoich Project/Summer 2026")
 
-plot_residuals <- function(model, response, model_name = "") {
+plot_residuals <- function(model, response, model_name = "", plot_type) {
   # Get posterior predictive means of the data
   # If you know some linear algebra, you can see the this
   # is like fitting each point to the average value of your
@@ -272,25 +271,39 @@ plot_residuals <- function(model, response, model_name = "") {
   # the predicted values
   residuals <- response - predicted
   
-  # Plot residuals vs fitted values
-  # too small of a deviance from the observed values
-  # are indicative of overfitting.
-  plot(predicted, residuals,
-       main = paste("Residuals", model_name),
-  )
-  abline(h = 0, lty = 2, col = "grey40")
+  if (plot_type == "residual_vs_observed") {
+    #residual vs observed plot: 
+    # Plot residuals vs fitted values
+    # too small of a deviance from the observed values
+    # are indicative of overfitting.
+    plot(predicted, residuals,
+         main = paste("Residuals", model_name),
+    )
+    abline(h = 0, lty = 2, col = "grey40")
+    
+  }
+  
+  if (plot_type == "expected_vs_observed"){
+    #expected vs observed plot:
+    # To get at the comfort zone/confidence in fitting 
+    plot(response, predicted,
+         main = paste("Residuals", model_name))
+  }
 }
 
+plot_residuals(chain1_10, aus_data$ln_leaf_N, "ln leaf N",
+               plot_type = "expected_vs_observed")
+
 #define chain
-chain1 <- ln_CN_ratio_chain1
-chain2 <- ln_CN_ratio_chain2
-chain3 <- ln_CN_ratio_chain3
+chain1 <- ln_CP_ratio_chain1
+chain2 <- ln_CP_ratio_chain2
+chain3 <- ln_CP_ratio_chain3
 
 #plot residuals: assess whether flattened at 0
-plot_residuals(chain3, aus_data$ln_CN_ratio, "C:N")
+plot_residuals(chain1, aus_data$ln_CP_ratio, "C:P")
 
 #trace plots
-plot(chain1)
+plot(chain3)
 
 #--plots for pre-existing model objects:
 
@@ -313,16 +326,85 @@ gelman.diag(combined_chains_sol)
 
 
 #---------------------------------Results---------------------------------------
-#note:
+
+#need to var part from combined chain objects both sol and VCV
 x <- get_info(chain)
 x$prop #returns MCMC sample matrix with the proportions, need to take mean of samples
 
-#variance partitioning plot
-#try to theme it exactly like LMMs
+#this function will partition variance from combined chain objects
+#and output a tidy dataframe ready for plotting
+#essentially the same as get info
+combined_chains_sol <- mcmc(as.matrix(mcmc.list(chain1$Sol, chain2$Sol, chain3$Sol)))
+combined_chains_VCV <- mcmc(as.matrix(mcmc.list(chain1$VCV, chain2$VCV, chain3$VCV)))
 
-extract_var <- function(chain, trait){
+var_part <- function(chain1, chain2, chain3, prec = 4){ 
+  #prec = precision parameter
+  #Extract the matrix containing posterior samples of the variance components
+  #create combined chain objects to use all possible information
   
-  res <- get_info(chain)
+  #create mcmc list, turn into matrix to merge results
+  combined_chains_sol <- mcmc(as.matrix(mcmc.list(chain1$Sol, chain2$Sol, chain3$Sol)))
+  combined_chains_VCV <- mcmc(as.matrix(mcmc.list(chain1$VCV, chain2$VCV, chain3$VCV)))
+  
+  VCV <- combined_chains_VCV
+  
+  # Extract individual columns of the VCV matrix
+  # Note: the "units" columns refers to the residual variance
+  var_phylo <- VCV[,"phylo"]
+  var_species <- VCV[,"species_binom"]
+  var_resid <- VCV[,"units"]
+  
+  # Add the random components of variance
+  var_random <- var_phylo + var_species
+
+  #multiply fixed design matrix with transposed model solutions
+  # = fitted values at each iteration for fixed effects
+  #design matrix will be the same no matter what the chain, so just pick the first
+  Xbeta <- chain1$X %*% t(combined_chains_sol)
+  
+  #compute variance over each column of fitted values using apply
+  #to get variance in fitted values across observations 
+  var_fixed <- apply(Xbeta, 2, FUN = var)
+  
+  # Get the total variance, this is defined as the sum of all the components
+  var_tot <- var_fixed + var_phylo + var_species + var_resid
+  
+  # Calculate the marginal R2
+  # This is the variance attributable only to the fixed effects variables
+  R2_marginal <- var_fixed / var_tot
+  print(paste0("Mean marginal R2: ", round(mean(R2_marginal), prec)))
+  
+  # Calculate the conditional R2
+  # This is the variance attributable to the fixed effects variables, while
+  # also considering the random effects variables
+  # Therefore, it makes sense to define it as the ratio:
+  R2_conditional <- (var_fixed + var_random) / var_tot
+  print(paste0("Mean conditional R2: ", round(mean(R2_conditional), prec)))
+  
+  # You can also compute the proportion of total variance attributed to each
+  # component, rather than as the two R2 values.
+  # Note: You'll notice that prop_fixed == R2_marginal
+  prop_fixed <- var_fixed / var_tot
+  prop_phylo <- var_phylo / var_tot
+  prop_species <- var_species / var_tot
+  prop_resid <- var_resid / var_tot
+  
+  # Posterior means of each
+  print(paste0("Mean fixed_p: ", round(mean(prop_fixed), prec)))
+  print(paste0("Mean phylo_p: ", round(mean(prop_phylo), prec)))
+  print(paste0("Mean species_p: ", round(mean(prop_species), prec)))
+  print(paste0("Mean resid_p: ", round(mean(prop_resid), prec)))
+  
+  # Return results
+  invisible(list(
+    R2 = cbind(R2_marginal, R2_conditional),
+    prop = cbind(prop_fixed, prop_phylo, prop_species, prop_resid)
+  ))
+}
+
+extract_var <- function(chain1, chain2, chain3, trait){
+  
+  res <- var_part(chain1, chain2, chain3)
   
   #take mean variance proportions
   means <- colMeans(res$prop)
@@ -333,21 +415,38 @@ extract_var <- function(chain, trait){
     prop = means
   )
 }
+#test:
+var_part(chain1, chain2, chain3)
+a <- extract_var(chain1, chain2, chain3 , "C:P")
+
+#read in individually, then rm() mods since they are too heavy
+N_var <- extract_var(ln_leaf_N_chain1, ln_leaf_N_chain2, ln_leaf_N_chain3,  "N")
+P_var <- extract_var(ln_leaf_P_chain1, ln_leaf_P_chain2, ln_leaf_P_chain3,  "P")
+C_var <- extract_var(leaf_C_per_dry_mass_chain1, leaf_C_per_dry_mass_chain2, leaf_C_per_dry_mass_chain3, "C")
+NP_var <- extract_var(ln_NP_ratio_chain1, ln_NP_ratio_chain2, ln_NP_ratio_chain3, "N:P")
+CN_var <- extract_var(ln_CN_ratio_chain1,ln_CN_ratio_chain2, ln_CN_ratio_chain3, "C:N")
+CP_var <- extract_var(ln_CP_ratio_chain1, ln_CP_ratio_chain2, ln_CP_ratio_chain3, "C:P")
 
 #prepare for plotting
-#ADDD RATIOS ONCE CP IS DONE RUNNING
+#variance partitioning plot
+#try to theme it exactly like LMMs
 total_parts <- bind_rows(
-  extract_var(ln_leaf_N_chain1,  "N"),
-  extract_var(ln_leaf_P_chain1,  "P"),
-  extract_var(leaf_C_per_dry_mass_chain1,  "C"),
-  extract_var(ln_NP_ratio_chain1, "N:P"),
-  extract_var(ln_CN_ratio_chain1, "C:N")
-  #extract_var(ln_CP_ratio_chain1)
+  N_var,
+  P_var,
+  C_var,
+  NP_var,
+  CN_var,
+  CP_var
   )
+
+#written into onedrive as to not repeat this process:
+#write_csv(total_parts, file = "varpart_combined_chains.csv")
 
 total_parts$group <- factor(
   total_parts$group,
   levels = c("residual", "environment", "species", "phylogeny"))
+
+total_parts$foliar_trait <- factor(total_parts$foliar_trait,levels = c("N","P","C","NP","CN","CP"))
 
 ggplot(total_parts,
        aes(x = foliar_trait,
@@ -358,7 +457,7 @@ ggplot(total_parts,
   labs(
     x = "Foliar chemistry",
     y = "Proportion of total variance",
-    title = "Variance Partition in trait ~ Enviroment + Phylogeny + Species mod"
+    title = "Variance Partition in trait ~ Phylogeny + Species + Environment"
   ) +
   scale_fill_manual(
     values = c(
@@ -370,74 +469,128 @@ ggplot(total_parts,
     breaks = c("phylogeny", "species", "environment", "residual"),
     labels = c("Phylogeny", "Species", "Environment", "Residual")
   ) +
-  scale_x_discrete(
-    limits = rev(levels(factor(total_parts$foliar_trait))),
-    labels = c("CN","NP","C","P","N")) + #modify to include CP after
+  scale_x_discrete(limits = rev(levels(factor(total_parts$foliar_trait)))) +
   theme_minimal() +
   theme(
-    axis.title = element_text(size = 0),
-    axis.text.y = element_text(size = 16),
-    axis.text.x = element_text(size = 14),
-    legend.text = element_text(size = 14),
-    legend.title = element_text(size = 16),
-    plot.title = element_text(size = 16)
+    axis.title = element_text(size = 20),
+    axis.text.y = element_text(size = 15),   
+    axis.text.x = element_text(size = 15),
+    legend.text = element_text(size = 0),
+    legend.title = element_text(size = 0),
+    plot.title = element_text(size = 20)
   )
 
+library(ggpubr)
+ggpubr::as_ggplot(get_legend(p))
+
+ggsave("Outputs/Visualizations/Manuscript/mcmc_varpart_legend.png", dpi = 800)
+
+#read in and combine results:
+traits <- c("ln_leaf_N", "ln_leaf_P", "leaf_C_per_dry_mass",
+            "ln_NP_ratio", "ln_CN_ratio", "ln_CP_ratio")
+
+term_labels <- c(
+  AET = "Actual Evapotranspiration",
+  temp_seasonality = "Temperature Seasonality",
+  precipitation_seasonality = "Precipitation Seasonality",
+  PPT = "Precipitation",
+  NPP = "Net Primary Productivity",
+  MAT = "Mean Annual Temperature",
+  CEC_total_0_30 = "Cation Exchange Capacity",
+  AP_total_0_30 = "Available Phosphorus",
+  log_SP_total_0_30 = "Total Soil Phosphorus (log)",
+  SOC_total_0_30 = "Total Soil Carbon",
+  SN_total_0_30 = "Total Soil Nitrogen"
+)
+
+predictor_order <- c(
+  "temp_seasonality",
+  "precipitation_seasonality",
+  "PPT",
+  "NPP",
+  "MAT",
+  "CEC_total_0_30",
+  "AP_total_0_30",
+  "log_SP_total_0_30",
+  "SOC_total_0_30",
+  "SN_total_0_30"
+)
+
+for (trait in traits) {
+  #read the 3 chains
+  chains <- lapply(1:3, function(i) {
+    file <- file.path(trait, paste0(trait, "_chain", i, "_Sol.csv"))
+    
+    data <- read_csv(file)
+    
+    #remove first column, convert to mcmc
+    data <- data %>% select(-1)
+    as.mcmc(data)
+  })
+  #create mcmc list
+  combined_list <- mcmc.list(chains)
+  
+  #convert to mcmc object
+  combined_mcmc <- mcmc(as.matrix(combined_list))
+  #save combined mcmc object
+  assign(paste0(trait, "_combined"), combined_mcmc)
+  
+  rm(chains, combined_mcmc)
+}
+
+#function to extract coefficient estimates from combined chain object
+get_coefs_combined <- function(combined_mcmc_obj) {
+  df <- data.frame(
+    post.mean = colMeans(combined_mcmc_obj), #fixed effect output
+    l_95_CI = HPDinterval(combined_mcmc_obj)[, "lower"], #HPD interval lower
+    u_95_CI = HPDinterval(combined_mcmc_obj)[, "upper"], #HPD interval upper 
+    eff.samp = effectiveSize(combined_mcmc_obj) #effective sample size
+  )
+  
+  df$term <- rownames(df) #add term column
+  
+  df <- as_tibble(df)
+}
+
+N_coefs <- get_coefs_combined(ln_leaf_N_combined)
+N_coefs <- N_coefs %>% mutate(trait = "ln_leaf_N")
+
+P_coefs <- get_coefs_combined(ln_leaf_P_combined)
+P_coefs <- P_coefs %>% mutate(trait = "ln_leaf_P")
+
+C_coefs <- get_coefs_combined(leaf_C_per_dry_mass_combined)
+C_coefs <- C_coefs %>% mutate(trait = "leaf_C_per_dry_mass")
+
+NP_coefs <- get_coefs_combined(ln_NP_ratio_combined)
+NP_coefs <- NP_coefs %>% mutate(trait = "ln_NP_ratio")
+
+CN_coefs <- get_coefs_combined(ln_CN_ratio_combined)
+CN_coefs <- CN_coefs %>% mutate(trait = "ln_CN_ratio")
+
+CP_coefs <- get_coefs_combined(ln_CP_ratio_combined)
+CP_coefs <- CP_coefs %>% mutate(trait = "ln_CP_ratio")
+
+fixed_estimates_combined <- bind_rows(N_coefs, P_coefs, C_coefs,
+                                      NP_coefs, CN_coefs, CP_coefs)
+#write_csv(fixed_estimates_combined, file = "fixed_estimates_combined.csv")
 
 #plot estimates
-plot_coefs_mcmc <- function(model, trait_name){
-  
-  #fixed effects summary
-  coef_df <- as.data.frame(summary(model)$solutions)
-  coef_df$term <- rownames(coef_df)
-  
-  #remove intercept
-  coef_df <- coef_df |>
-    dplyr::filter(term != "(Intercept)") |>
-    dplyr::rename(
-      estimate = post.mean,
-      lower = `l-95% CI`,
-      upper = `u-95% CI`
-    )
-  
-  #predictor labels
-  term_labels <- c(
-    AET = "Actual Evapotranspiration",
-    temp_seasonality = "Temperature Seasonality",
-    precipitation_seasonality = "Precipitation Seasonality",
-    PPT = "Precipitation",
-    NPP = "Net Primary Productivity",
-    MAT = "Mean Annual Temperature",
-    CEC_total_0_30 = "Cation Exchange Capacity",
-    AP_total_0_30 = "Available Phosphorus",
-    log_SP_total_0_30 = "Total Soil Phosphorus (log)",
-    SOC_total_0_30 = "Total Soil Carbon",
-    SN_total_0_30 = "Total Soil Nitrogen"
-  )
-  
-  predictor_order <- c(
-    "temp_seasonality",
-    "precipitation_seasonality",
-    "PPT",
-    "NPP",
-    "MAT",
-    "CEC_total_0_30",
-    "AP_total_0_30",
-    "log_SP_total_0_30",
-    "SOC_total_0_30",
-    "SN_total_0_30"
-  )
+plot_coefs_mcmc <- function(coef_df, trait_name, pred_order){
+  #remove intercept column, set predictor order
+  coef_df <- coef_df %>%
+  filter(term != "(Intercept)") %>% 
+  mutate(term = factor(term, levels = pred_order)) #set order
   
   coef_df$term <- factor(coef_df$term,
                          levels = predictor_order)
   
   ggplot(coef_df,
-         aes(x = estimate,
+         aes(x = post.mean,
              y = term)) +
     geom_vline(xintercept = 0,
                linetype = "dashed") +
-    geom_errorbarh(aes(xmin = lower,
-                       xmax = upper),
+    geom_errorbarh(aes(xmin = l_95_CI,
+                       xmax = u_95_CI),
                    height = 0) +
     geom_point(size = 3) +
     scale_y_discrete(labels = term_labels) +
@@ -448,15 +601,110 @@ plot_coefs_mcmc <- function(model, trait_name){
     ) +
     theme_minimal() +
     theme(
-      axis.text.y = element_text(size = 13),
-      axis.text.x = element_text(size = 12),
-      plot.title = element_text(size = 15)
+      axis.text.y = element_text(size = 15),
+      axis.text.x = element_text(size = 15),
+      plot.title = element_text(size = 20), 
+      axis.title = element_text(size = 20)
     )
 }
 
-plot_coefs_mcmc(ln_leaf_N_chain1, "Leaf N - MCMC")
-plot_coefs_mcmc(ln_leaf_P_chain1, "Leaf P - MCMC")
-plot_coefs_mcmc(leaf_C_per_dry_mass_chain1, "Leaf C - MCMC")
-plot_coefs_mcmc(ln_NP_ratio_chain1, "N:P ratio - MCMC")
-plot_coefs_mcmc(ln_CN_ratio_chain1, "C:N ratio - MCMC")
-plot_coefs_mcmc(ln_CP_ratio_chain1, "C:P ratio - MCMC")
+plot_coefs_mcmc(N_coefs, "Leaf N - MCMC", predictor_order)
+plot_coefs_mcmc(P_coefs, "Leaf P - MCMC", predictor_order)
+plot_coefs_mcmc(C_coefs, "Leaf C - MCMC", predictor_order)
+plot_coefs_mcmc(NP_coefs, "Leaf NP - MCMC", predictor_order)
+plot_coefs_mcmc(CN_coefs, "Leaf CN - MCMC", predictor_order)
+plot_coefs_mcmc(CP_coefs, "Leaf CP - MCMC", predictor_order)
+
+
+library(tidyr)
+library(patchwork)
+
+add_missing_predictors <- function(df, predictor_order) {
+  df %>%
+    complete(
+      term = predictor_order,
+      fill = list(
+        estimate = NA_real_,
+        lower = NA_real_,
+        upper = NA_real_
+      )
+    ) %>%
+    mutate(term = factor(term, levels = predictor_order))
+}
+
+N_coefs <- add_missing_predictors(N_coefs, predictor_order)
+P_coefs <- add_missing_predictors(P_coefs, predictor_order)
+C_coefs <- add_missing_predictors(C_coefs, predictor_order)
+NP_coefs <- add_missing_predictors(NP_coefs, predictor_order)
+CN_coefs <- add_missing_predictors(CN_coefs, predictor_order)
+CP_coefs <- add_missing_predictors(CP_coefs, predictor_order)
+
+
+plot_coef_missing_preds <- function(df, pred_order, title, show_y = TRUE) {
+  
+  #remove intercept column, set predictor order
+  df <- df %>%
+    filter(term != "(Intercept)") %>% 
+    mutate(term = factor(term, levels = pred_order)) #set order
+  
+  df$term <- factor(df$term,
+                         levels = predictor_order)
+  
+  ggplot(df,
+         aes(x = post.mean,
+             y = term)) +
+    
+    geom_vline(xintercept = 0,
+               linetype = "dashed") +
+    
+    geom_errorbarh(aes(xmin = l_95_CI,
+                       xmax = u_95_CI),
+                   height = 0,
+                   na.rm = TRUE) +
+    
+    geom_point(size = 3,
+               na.rm = TRUE) +
+    
+    scale_y_discrete(
+      labels = if (show_y) term_labels else NULL,
+      drop = FALSE
+    ) +
+    
+    labs(
+      x = "Posterior mean",
+      y = NULL,
+      title = title
+    ) +
+    
+    theme_minimal() +
+    
+    theme(
+      axis.text.y =
+        if (show_y)
+          element_text(size = 13)
+      else
+        element_blank(),
+      axis.ticks.y =
+        if (show_y)
+          element_line()
+      else
+        element_blank(),
+        #axis.text.y = element_text(size = 15),
+        axis.text.x = element_text(size = 15),
+        plot.title = element_text(size = 20), 
+        axis.title = element_text(size = 20)
+    )
+}
+
+plot_coef_missing_preds(N_coefs, predictor_order, "Leaf N", TRUE)
+
+p1 <- plot_coef_missing_preds(N_coefs, predictor_order, "Leaf N", TRUE)
+p2 <- plot_coef_missing_preds(P_coefs, predictor_order, "Leaf P", FALSE)
+p3 <- plot_coef_missing_preds(C_coefs, predictor_order, "Leaf C", FALSE)
+
+p4 <- plot_coef_missing_preds(NP_coefs, predictor_order, "Leaf NP", TRUE)
+p5 <- plot_coef_missing_preds(CN_coefs, predictor_order, "Leaf CN", FALSE)
+p6 <- plot_coef_missing_preds(CP_coefs, predictor_order, "Leaf CP", FALSE)
+
+p1 + p2 + p3
+p4 + p5 + p6

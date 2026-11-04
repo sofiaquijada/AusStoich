@@ -142,7 +142,7 @@ tree$node.label <- NULL
 
 #for the following, need phylo object and dataframe associated with it
 
-#basic horizontal base ---- 
+#basic horizontal base
 base_plot <- ggtree(ausdata_tree) + geom_tiplab(size = 0.5)
 
 #plotting continuous coloring with ggtree
@@ -151,6 +151,19 @@ treedata <- as.treedata(ausdata_tree_tib)
 ggtree(treedata, aes(color = avg_leaf_N), layout = "circular") +
   scale_color_continuous(low = "#6ad1f3", high = "#ee6b00") +
   geom_tiplab(size = 0.5)
+
+#following for high resolution image for manuscript:
+#write in leaf N, and P, and save legend as necessary
+p <- ggtree(treedata, aes(color = avg_leaf_P), layout = "circular", size = 1) + 
+  scale_color_continuous(low = "#6ad1f3", high = "#ee6b00") +
+  labs(color = "Average Leaf P") +  
+  theme(
+    legend.position = "inside"
+  ) + geom_tiplab(size = 1)
+
+ggpubr::as_ggplot(get_legend(p))
+
+ggsave("Outputs/Visualizations/Manuscript/leafP_phylo.png", dpi = 800)
 
 #plotting by category with ggtree
 ggtree(treedata, aes(color = myc_type), layout = "circular") +
@@ -206,23 +219,20 @@ treedata@data <- treedata@data %>%
     )
   )
 
-#sample size as circles, not ideal
-ggtree(treedata, layout = "circular", color = "grey30", size = 0.1) +
-  geom_tippoint(aes(fill = sample_bin), shape = 21,
-                size = 1.2,color = "black", stroke = 0.1) +
-  scale_fill_manual(name = "Sample size",
-    values = c("1" = "red","2" = "orange","3" = "yellow","4–6" = "green",
-      "7–10" = "blue", "11–20" = "purple", "21–30" = "brown", "31+" = "black"))
-
-ggtree(treedata, layout = "circular",
+#these are bins, not absolute values
+p <- ggtree(treedata, layout = "circular",
        color = "grey40", linewidth = 0.1) + #tree base
   geom_fruit(geom = geom_col, mapping = aes(y = label, x = sample_bin, fill = sample_bin),
-  ) +
+             show.legend = TRUE) +
   scale_fill_manual(
     name = "Frequency of Observations",
     values = c("1"     = "#d73027","2" = "#fc8d59","3"= "#fee08b",
       "4–6"   = "#91cf60","7–10"  = "#1a9850","11–20" = "#4575b4",
-      "21–30" = "#542788", "31+"   = "#000000")) #these are bins, not absolute values...
+      "21–30" = "#542788", "31+"   = "#000000"))
+
+ggpubr::as_ggplot(get_legend(p))
+
+ggsave("Outputs/Visualizations/Manuscript/binned_phylo.png", dpi = 800)
 
 #these are absolute values but... the corymbia obviously sets everything apart
 ggtree(treedata, layout = "circular",
